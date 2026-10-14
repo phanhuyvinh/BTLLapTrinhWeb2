@@ -59,9 +59,15 @@ namespace MedCare_Pharmacy.Controllers
         }
 
         // POST: api/orders (Khách hàng tạo đơn hàng Online)
+        // POST: api/orders (Khách hàng tạo đơn hàng Online)
         [HttpPost]
         public async Task<IActionResult> CreateOrder([FromBody] CreateOrderDto dto)
         {
+            if (dto == null || dto.Items == null || dto.Items.Count == 0)
+            {
+                return BadRequest(new { message = "Đơn hàng phải có ít nhất một sản phẩm!" });
+            }
+
             var order = new Order
             {
                 UserId = dto.UserId,
@@ -77,6 +83,18 @@ namespace MedCare_Pharmacy.Controllers
 
             foreach (var item in dto.Items)
             {
+                if (item.ProductId <= 0)
+                {
+                    return BadRequest(new { message = "ID sản phẩm không hợp lệ!" });
+                }
+
+                // Kiểm tra sản phẩm có tồn tại trong Database không
+                var product = await _context.Products.FindAsync(item.ProductId);
+                if (product == null)
+                {
+                    return BadRequest(new { message = $"Sản phẩm ID {item.ProductId} không tồn tại!" });
+                }
+
                 order.OrderDetails.Add(new OrderDetail
                 {
                     ProductId = item.ProductId,

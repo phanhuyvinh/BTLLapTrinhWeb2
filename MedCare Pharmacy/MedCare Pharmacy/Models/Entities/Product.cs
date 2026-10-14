@@ -7,12 +7,13 @@
         public string? ActiveIngredient { get; set; }
         public decimal Price { get; set; }
 
-        // Thêm trường Số lượng tồn kho
         public int StockQuantity { get; set; }
 
         public string Unit { get; set; } = "Hộp";
-        public string Description { get; set; } = string.Empty;
-        public string ImageUrl { get; set; } = string.Empty;
+
+        // Sửa 2 dòng này thành string? để chấp nhận giá trị NULL từ Database
+        public string? Description { get; set; }
+        public string? ImageUrl { get; set; }
 
         // Khóa ngoại
         public int? CategoryId { get; set; }
