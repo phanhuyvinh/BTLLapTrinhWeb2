@@ -780,3 +780,92 @@ document.addEventListener("DOMContentLoaded", () => {
     if (p.includes("/admin/users")) initUsersPage();
     if (p.includes("/admin/reports")) initReportsPage();
 });
+/* ========== Danh sách & chi tiết Dược sĩ (Admin) ========== */
+function defaultPharmacistAvatar(name) {
+    const letter = (name || "D").trim().charAt(0).toUpperCase();
+    return `<div class="pharm-avatar-fallback">${letter}</div>`;
+}
+
+function pharmacistAvatarHtml(url, name) {
+    if (url) {
+        return `<img class="pharm-avatar" src="${escapeHtml(url)}" alt=""
+            onerror="this.style.display='none';this.insertAdjacentHTML('afterend', \`${defaultPharmacistAvatar(name).replace(/`/g, "")}\`)">`;
+    }
+    return defaultPharmacistAvatar(name);
+}
+
+async function initAdminPharmacistList() {
+    const box = document.getElementById("pharmacistList");
+    if (!box) return;
+    try {
+        const list = await apiGet("/users/pharmacists");
+        const arr = Array.isArray(list) ? list : [];
+        if (!arr.length) {
+            box.innerHTML = `<div class="empty">Chưa có tài khoản dược sĩ trong hệ thống.</div>`;
+            return;
+        }
+        box.innerHTML = arr.map(p => {
+            const name = p.fullName || p.FullName || "Dược sĩ";
+            const email = p.email || p.Email || "";
+            const status = (p.status || p.Status || "").toLowerCase();
+            const statusCls = status === "active" ? "ok" : "warn";
+            const av = p.avatarUrl
+                ? `<img class="pharm-avatar" src="${escapeHtml(p.avatarUrl)}" alt=""
+                     onerror="this.outerHTML='${defaultPharmacistAvatar(name).replace(/'/g, "\\'")}'">`
+                : defaultPharmacistAvatar(name);
+            return `
+                <a class="pharm-card" href="/Admin/PharmacistDetail/${p.id}">
+                    ${av}
+                    <div class="pharm-card-body">
+                        <div class="pharm-name">${escapeHtml(name)}</div>
+                        <div class="pharm-email">${escapeHtml(email)}</div>
+                        <span class="badge ${statusCls}">${escapeHtml(status || "—")}</span>
+                    </div>
+                </a>`;
+        }).join("");
+    } catch (err) {
+        box.innerHTML = `<div class="empty">${escapeHtml(err.message || "Lỗi tải danh sách")}</div>`;
+    }
+}
+
+async function initAdminPharmacistDetail() {
+    const root = document.getElementById("pharmacistDetail");
+    if (!root) return;
+    const id = parseInt(root.getAttribute("data-id") || "0", 10);
+    if (!id) {
+        root.innerHTML = `<div class="empty">Thiếu ID dược sĩ.</div>`;
+        return;
+    }
+    try {
+        const p = await apiGet(`/users/${id}`);
+        if (!p || (p.role || "").toLowerCase() !== "pharmacist") {
+            root.innerHTML = `<div class="empty">Không tìm thấy dược sĩ #${id}.</div>`;
+            return;
+        }
+        const name = p.fullName || p.FullName || "";
+        const title = document.getElementById("detailTitle");
+        if (title) title.textContent = name;
+
+        const av = p.avatarUrl
+            ? `<img class="pharm-avatar large" src="${escapeHtml(p.avatarUrl)}" alt="">`
+            : defaultPharmacistAvatar(name);
+
+        root.innerHTML = `
+            <div class="panel" style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+                <div>${av}</div>
+                <div style="flex:1;min-width:220px">
+                    <h2 style="margin:0 0 8px">${escapeHtml(name)}</h2>
+                    <p><b>Email:</b> ${escapeHtml(p.email || "")}</p>
+                    <p><b>Điện thoại:</b> ${escapeHtml(p.phone || "")}</p>
+                    <p><b>Trạng thái:</b> ${escapeHtml(p.status || "")}</p>
+                    <p><b>Ngày tạo:</b> ${p.createdAt ? new Date(p.createdAt).toLocaleString("vi-VN") : "—"}</p>
+                    <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+                        <a class="btn" href="/Pharmacist/Consultation?pharmacistId=${p.id}">💬 Xem hội thoại tư vấn</a>
+                        <a class="btn ghost" href="/Admin/Users">👥 Quản lý người dùng</a>
+                    </div>
+                </div>
+            </div>`;
+    } catch (err) {
+        root.innerHTML = `<div class="empty">${escapeHtml(err.message || "Lỗi")}</div>`;
+    }
+}

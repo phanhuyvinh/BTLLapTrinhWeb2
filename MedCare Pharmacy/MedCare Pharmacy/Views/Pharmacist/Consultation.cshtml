@@ -17,9 +17,7 @@
             <a class="brand" asp-controller="Pharmacist" asp-action="Index">
                 <span>✚</span> MedCare
             </a>
-
             <div class="side-sep">Nghiệp vụ Dược sĩ</div>
-
             <nav>
                 <a asp-controller="Pharmacist" asp-action="Index">📊 Tổng quan</a>
                 <a asp-controller="Pharmacist" asp-action="Pos">💵 Bán tại quầy POS</a>
@@ -27,9 +25,7 @@
                 <a asp-controller="Pharmacist" asp-action="InventoryAlert">⚠️ Cảnh báo kho</a>
                 <a class="active" asp-controller="Pharmacist" asp-action="Consultation">💬 Tư vấn trực tuyến</a>
             </nav>
-
             <div class="side-sep">Liên kết</div>
-
             <nav>
                 <a asp-controller="Home" asp-action="Index">🏠 Trang chủ khách hàng</a>
                 <a asp-controller="Admin" asp-action="Index">🛡️ Khu vực Admin</a>
@@ -42,10 +38,18 @@
                     <div class="breadcrumb">Dược sĩ / Tư vấn trực tuyến</div>
                     <h1>Tư vấn trực tuyến</h1>
                 </div>
-
                 <div style="display:flex;gap:8px;align-items:center">
                     <span id="authArea"></span>
                 </div>
+            </div>
+
+            <!-- Chỉ MỘT dropdown — JS (initPharmacistChat) chỉ hiện khi role = admin -->
+            <div style="margin-bottom:12px">
+                <label for="chatPharmacistFilter" style="font-weight:600;margin-right:8px">Xem theo dược sĩ (Admin):</label>
+                <select id="chatPharmacistFilter"
+                        style="display:none;min-width:260px;padding:8px 12px;border-radius:8px;border:1px solid #d1d5db">
+                    <option value="">— Tất cả dược sĩ —</option>
+                </select>
             </div>
 
             <div class="chat-layout pharmacist-chat" id="chatRoot">
@@ -56,16 +60,23 @@
 
                 <section class="chat-panel">
                     <div class="chat-header">
-                        <div class="chat-peer" id="chatHeader">
-                            Chọn một cuộc trò chuyện
-                        </div>
+                        <div class="chat-peer" id="chatHeader">Chọn một cuộc trò chuyện</div>
                     </div>
 
                     <div class="chat-messages" id="chatMessages"></div>
 
                     <div class="chat-input-bar">
-                        <textarea id="chatInput" rows="1" placeholder="Nhập câu trả lời... (Enter để gửi)"></textarea>
-                        <button id="chatSend" class="primary-btn">Gửi ➤</button>
+                        <input type="file" id="chatImage" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none">
+                        <label for="chatImage" id="chatImageBtn" class="btn muted" title="Gửi ảnh"
+                               style="flex-shrink:0;padding:8px 12px;cursor:pointer;margin:0;display:inline-flex;align-items:center">
+                            📷
+                        </label>
+                        <div style="flex:1;display:flex;flex-direction:column;gap:6px;min-width:0">
+                            <img id="chatImagePreview" alt="Xem trước"
+                                 style="display:none;max-height:80px;max-width:160px;border-radius:8px;object-fit:contain">
+                            <textarea id="chatInput" rows="1" placeholder="Nhập câu trả lời... (Enter để gửi)"></textarea>
+                        </div>
+                        <button type="button" id="chatSend" class="primary-btn">Gửi ➤</button>
                     </div>
                 </section>
             </div>
@@ -80,11 +91,15 @@
     <script src="~/js/pharmacy.js"></script>
     <script src="~/js/chat.js"></script>
     <script>
-        document.addEventListener("DOMContentLoaded", () => {
-            if (typeof requireRole === "function") requireRole("pharmacist");
-            if (typeof renderAuthArea === "function") renderAuthArea();
-            if (typeof initPharmacistChat === "function") initPharmacistChat();
-        });
+            document.addEventListener("DOMContentLoaded", () => {
+                if (typeof requireRoleAny === "function") {
+                    requireRoleAny(["pharmacist", "admin"]);
+                } else if (typeof requireRole === "function") {
+                    requireRole("pharmacist");
+                }
+                if (typeof renderAuthArea === "function") renderAuthArea();
+                if (typeof initPharmacistChat === "function") initPharmacistChat();
+            });
     </script>
 </body>
 </html>

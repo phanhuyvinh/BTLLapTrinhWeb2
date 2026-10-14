@@ -32,6 +32,7 @@ namespace MedCare_Pharmacy.Controllers
                     u.Email,
                     role = u.Role.ToLower(),
                     status = u.Status,
+                    avatarUrl = u.AvatarUrl,
                     u.CreatedAt
                 })
                 .ToListAsync();
@@ -40,7 +41,7 @@ namespace MedCare_Pharmacy.Controllers
         }
 
         // GET: api/users/5
-        [HttpGet("{id}")]
+        [HttpGet("{id:int}")]
         [Authorize(Roles = "admin")]
         public async Task<IActionResult> GetById(int id)
         {
@@ -55,10 +56,33 @@ namespace MedCare_Pharmacy.Controllers
                 u.Email,
                 role = u.Role.ToLower(),
                 status = u.Status,
+                avatarUrl = u.AvatarUrl,
                 u.CreatedAt
             });
         }
+        // GET: api/users/pharmacists — danh sách dược sĩ (Admin)
+        [HttpGet("pharmacists")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> GetPharmacists()
+        {
+            var list = await _context.Users
+                .Where(u => u.Role.ToLower() == "pharmacist")
+                .OrderBy(u => u.FullName)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.FullName,
+                    u.Phone,
+                    u.Email,
+                    role = u.Role.ToLower(),
+                    status = u.Status,
+                    avatarUrl = u.AvatarUrl,
+                    u.CreatedAt
+                })
+                .ToListAsync();
 
+            return Ok(list);
+        }
         // POST: api/users  (Admin tạo tài khoản)
         [HttpPost]
         [Authorize(Roles = "admin")]

@@ -30,23 +30,21 @@ namespace MedCare_Pharmacy.Controllers
             return User.FindFirst(ClaimTypes.Role)?.Value?.ToLower();
         }
 
-        // GET: api/chat/conversations
+        // GET: api/chat/conversations?pharmacistId=2
         [HttpGet("conversations")]
-        public async Task<IActionResult> GetConversations()
+        public async Task<IActionResult> GetConversations([FromQuery] int? pharmacistId = null)
         {
             var me = CurrentUserId();
             if (me == null) return Unauthorized();
 
             var role = CurrentUserRole() ?? "";
-            bool isStaff = role == "admin" || role == "pharmacist";
-
             List<ChatMessage> messages;
             List<int> peerIds;
 
-            if (isStaff)
+            if (role == "pharmacist")
             {
-                // Nếu là Admin hoặc Dược sĩ: Lấy toàn bộ tin nhắn trong hệ thống
                 messages = await _context.ChatMessages
+                    .Where(m => m.SenderId == me || m.ReceiverId == me)
                     .OrderByDescending(m => m.Timestamp)
                     .ToListAsync();
 
@@ -55,16 +53,48 @@ namespace MedCare_Pharmacy.Controllers
                     .Select(u => u.Id)
                     .ToListAsync();
 
-                // Lọc ra danh sách ID khách hàng đã tham gia nhắn tin
                 peerIds = messages
                     .SelectMany(m => new[] { m.SenderId, m.ReceiverId })
-                    .Where(id => !staffIds.Contains(id))
+                    .Where(id => id != me.Value && !staffIds.Contains(id))
                     .Distinct()
                     .ToList();
             }
+            else if (role == "admin")
+            {
+                var staffIds = await _context.Users
+                    .Where(u => u.Role.ToLower() == "admin" || u.Role.ToLower() == "pharmacist")
+                    .Select(u => u.Id)
+                    .ToListAsync();
+
+                if (pharmacistId.HasValue && pharmacistId.Value > 0)
+                {
+                    var pid = pharmacistId.Value;
+                    messages = await _context.ChatMessages
+                        .Where(m => m.SenderId == pid || m.ReceiverId == pid)
+                        .OrderByDescending(m => m.Timestamp)
+                        .ToListAsync();
+
+                    peerIds = messages
+                        .SelectMany(m => new[] { m.SenderId, m.ReceiverId })
+                        .Where(id => id != pid && !staffIds.Contains(id))
+                        .Distinct()
+                        .ToList();
+                }
+                else
+                {
+                    messages = await _context.ChatMessages
+                        .OrderByDescending(m => m.Timestamp)
+                        .ToListAsync();
+
+                    peerIds = messages
+                        .SelectMany(m => new[] { m.SenderId, m.ReceiverId })
+                        .Where(id => !staffIds.Contains(id))
+                        .Distinct()
+                        .ToList();
+                }
+            }
             else
             {
-                // Khách hàng: chỉ tin nhắn của chính mình
                 messages = await _context.ChatMessages
                     .Where(m => m.SenderId == me || m.ReceiverId == me)
                     .OrderByDescending(m => m.Timestamp)
@@ -75,7 +105,6 @@ namespace MedCare_Pharmacy.Controllers
                     .Distinct()
                     .ToList();
 
-                // Chỉ giữ peer là dược sĩ/admin (tránh dính hội thoại không hợp lệ)
                 var staffIdSet = await _context.Users
                     .Where(u => u.Role.ToLower() == "admin" || u.Role.ToLower() == "pharmacist")
                     .Select(u => u.Id)
@@ -90,45 +119,89 @@ namespace MedCare_Pharmacy.Controllers
 
             var convs = peerIds.Select(pid =>
             {
-                var last = messages.First(m =>
-                    m.SenderId == pid || m.ReceiverId == pid);
+                IEnumerable<ChatMessage> thread;
+                if (role == "pharmacist")
+                {
+                    thread = messages.Where(m =>
+                        (m.SenderId == me && m.ReceiverId == pid) ||
+                        (m.SenderId == pid && m.ReceiverId == me));
+                }
+                else if (role == "admin" && pharmacistId.HasValue && pharmacistId.Value > 0)
+                {
+                    var sid = pharmacistId.Value;
+                    thread = messages.Where(m =>
+                        (m.SenderId == sid && m.ReceiverId == pid) ||
+                        (m.SenderId == pid && m.ReceiverId == sid));
+                }
+                else
+                {
+                    thread = messages.Where(m => m.SenderId == pid || m.ReceiverId == pid);
+                }
 
-                var unread = messages.Count(m =>
-                    m.SenderId == pid && !m.IsRead);
+                var last = thread.OrderByDescending(m => m.Timestamp).FirstOrDefault();
+                if (last == null) return null!;
+
+                int unread;
+                if (role == "pharmacist")
+                    unread = thread.Count(m => m.SenderId == pid && m.ReceiverId == me && !m.IsRead);
+                else if (role == "admin" && pharmacistId.HasValue && pharmacistId.Value > 0)
+                    unread = thread.Count(m => m.SenderId == pid && m.ReceiverId == pharmacistId.Value && !m.IsRead);
+                else
+                    unread = thread.Count(m => m.SenderId == pid && !m.IsRead);
 
                 peers.TryGetValue(pid, out var peer);
-
                 return new
                 {
                     peerId = pid,
                     peerName = peer?.FullName ?? ("User #" + pid),
                     peerEmail = peer?.Email ?? "",
                     peerRole = peer?.Role?.ToLower() ?? "",
+                    peerAvatar = peer?.AvatarUrl,
                     lastMessage = !string.IsNullOrEmpty(last.Content)
-                    ? last.Content
-                    : (!string.IsNullOrEmpty(last.ImageUrl) ? "[Ảnh]" : ""),
+                        ? last.Content
+                        : (!string.IsNullOrEmpty(last.ImageUrl) ? "[Ảnh]" : ""),
                     lastUpdate = last.Timestamp,
                     unread
                 };
             })
-            .OrderByDescending(c => c.lastUpdate)
+            .Where(c => c != null)
+            .OrderByDescending(c => c!.lastUpdate)
             .ToList();
 
             return Ok(convs);
         }
 
-        // GET: api/chat/messages?peerId=5
+        // GET: api/chat/messages?peerId=5&pharmacistId=2
         [HttpGet("messages")]
-        public async Task<IActionResult> GetMessages([FromQuery] int peerId)
+        public async Task<IActionResult> GetMessages([FromQuery] int peerId, [FromQuery] int? pharmacistId = null)
         {
             var me = CurrentUserId();
             if (me == null) return Unauthorized();
+            if (peerId <= 0) return BadRequest(new { message = "Thiếu peerId." });
 
             var role = CurrentUserRole() ?? "";
-            bool isStaff = role == "admin" || role == "pharmacist";
-
             List<ChatMessage> msgs;
-            if (isStaff)
+
+            if (role == "pharmacist")
+            {
+                msgs = await _context.ChatMessages
+                    .Where(m =>
+                        (m.SenderId == me && m.ReceiverId == peerId) ||
+                        (m.SenderId == peerId && m.ReceiverId == me))
+                    .OrderBy(m => m.Timestamp)
+                    .ToListAsync();
+            }
+            else if (role == "admin" && pharmacistId.HasValue && pharmacistId.Value > 0)
+            {
+                var sid = pharmacistId.Value;
+                msgs = await _context.ChatMessages
+                    .Where(m =>
+                        (m.SenderId == sid && m.ReceiverId == peerId) ||
+                        (m.SenderId == peerId && m.ReceiverId == sid))
+                    .OrderBy(m => m.Timestamp)
+                    .ToListAsync();
+            }
+            else if (role == "admin")
             {
                 msgs = await _context.ChatMessages
                     .Where(m => m.SenderId == peerId || m.ReceiverId == peerId)
@@ -145,7 +218,7 @@ namespace MedCare_Pharmacy.Controllers
                     .ToListAsync();
             }
 
-            var userIds = msgs.Select(m => m.SenderId).Distinct().ToList();
+            var userIds = msgs.SelectMany(m => new[] { m.SenderId, m.ReceiverId }).Distinct().ToList();
             var users = await _context.Users
                 .Where(u => userIds.Contains(u.Id))
                 .ToDictionaryAsync(u => u.Id);
@@ -160,14 +233,16 @@ namespace MedCare_Pharmacy.Controllers
                 at = m.Timestamp,
                 isRead = m.IsRead,
                 senderName = users.ContainsKey(m.SenderId) ? users[m.SenderId].FullName : "",
+                senderAvatar = users.ContainsKey(m.SenderId) ? users[m.SenderId].AvatarUrl : null,
                 isMine = m.SenderId == me
             });
 
             return Ok(result);
         }
-        // POST: api/chat/messages  (FormData: receiverId, content?, image?)
+
+        // POST: api/chat/messages
         [HttpPost("messages")]
-        [RequestSizeLimit(3 * 1024 * 1024)] // tối đa ~3MB request
+        [RequestSizeLimit(3 * 1024 * 1024)]
         public async Task<IActionResult> Send(
             [FromForm] int receiverId,
             [FromForm] string? content,
@@ -196,7 +271,6 @@ namespace MedCare_Pharmacy.Controllers
                 if (image.Length > 2 * 1024 * 1024)
                     return BadRequest(new { message = "Ảnh không được vượt quá 2 MB." });
 
-                // Chặn MIME không phải ảnh
                 var contentType = (image.ContentType ?? "").ToLowerInvariant();
                 if (!contentType.StartsWith("image/"))
                     return BadRequest(new { message = "Tệp không phải là ảnh hợp lệ." });
@@ -229,6 +303,8 @@ namespace MedCare_Pharmacy.Controllers
             _context.ChatMessages.Add(msg);
             await _context.SaveChangesAsync();
 
+            var sender = await _context.Users.FindAsync(me.Value);
+
             return Ok(new
             {
                 success = true,
@@ -237,23 +313,37 @@ namespace MedCare_Pharmacy.Controllers
                 receiverId = msg.ReceiverId,
                 text = msg.Content,
                 imageUrl = msg.ImageUrl,
-                at = msg.Timestamp
+                at = msg.Timestamp,
+                senderName = sender?.FullName ?? "",
+                isMine = true
             });
         }
-        // PUT: api/chat/messages/read?peerId=5
+
+        // PUT: api/chat/messages/read?peerId=5&pharmacistId=2
         [HttpPut("messages/read")]
-        public async Task<IActionResult> MarkRead([FromQuery] int peerId)
+        public async Task<IActionResult> MarkRead([FromQuery] int peerId, [FromQuery] int? pharmacistId = null)
         {
             var me = CurrentUserId();
             if (me == null) return Unauthorized();
 
             var role = CurrentUserRole() ?? "";
-            bool isStaff = role == "admin" || role == "pharmacist";
-
             List<ChatMessage> unread;
-            if (isStaff)
+
+            if (role == "pharmacist")
             {
-                // Nhân viên đánh dấu tất cả tin nhắn gửi đến từ khách hàng peerId là đã đọc
+                unread = await _context.ChatMessages
+                    .Where(m => m.SenderId == peerId && m.ReceiverId == me && !m.IsRead)
+                    .ToListAsync();
+            }
+            else if (role == "admin" && pharmacistId.HasValue && pharmacistId.Value > 0)
+            {
+                var sid = pharmacistId.Value;
+                unread = await _context.ChatMessages
+                    .Where(m => m.SenderId == peerId && m.ReceiverId == sid && !m.IsRead)
+                    .ToListAsync();
+            }
+            else if (role == "admin")
+            {
                 unread = await _context.ChatMessages
                     .Where(m => m.SenderId == peerId && !m.IsRead)
                     .ToListAsync();
@@ -279,17 +369,20 @@ namespace MedCare_Pharmacy.Controllers
             if (me == null) return Unauthorized();
 
             var role = CurrentUserRole() ?? "";
-            bool isStaff = role == "admin" || role == "pharmacist";
-
             int count;
-            if (isStaff)
+
+            if (role == "pharmacist")
+            {
+                count = await _context.ChatMessages
+                    .CountAsync(m => m.ReceiverId == me && !m.IsRead);
+            }
+            else if (role == "admin")
             {
                 var staffIds = await _context.Users
                     .Where(u => u.Role.ToLower() == "admin" || u.Role.ToLower() == "pharmacist")
                     .Select(u => u.Id)
                     .ToListAsync();
 
-                // Đếm tổng số tin nhắn chưa đọc từ khách hàng gửi tới hệ thống
                 count = await _context.ChatMessages
                     .CountAsync(m => !m.IsRead && !staffIds.Contains(m.SenderId));
             }
@@ -302,17 +395,23 @@ namespace MedCare_Pharmacy.Controllers
             return Ok(new { count });
         }
 
-        // GET: api/chat/pharmacists  (khách lấy dược sĩ để bắt đầu chat)
+        // GET: api/chat/pharmacists
         [HttpGet("pharmacists")]
         public async Task<IActionResult> GetPharmacists()
         {
             var list = await _context.Users
                 .Where(u => u.Role.ToLower() == "pharmacist" && u.Status.ToLower() == "active")
-                .Select(u => new { u.Id, u.FullName, u.Email })
+                .OrderBy(u => u.FullName)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.FullName,
+                    u.Email,
+                    u.Phone,
+                    avatarUrl = u.AvatarUrl
+                })
                 .ToListAsync();
             return Ok(list);
         }
     }
-
-    //public record SendChatDto(int ReceiverId, string Content);
 }

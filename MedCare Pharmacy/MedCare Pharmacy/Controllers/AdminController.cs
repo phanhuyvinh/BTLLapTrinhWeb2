@@ -45,5 +45,17 @@ namespace MedCare_Pharmacy.Controllers
         {
             return View();
         }
+        // GET: /Admin/Pharmacists — danh sách tất cả dược sĩ
+        public IActionResult Pharmacists()
+        {
+            return View();
+        }
+
+        // GET: /Admin/PharmacistDetail/5 — trang riêng từng dược sĩ
+        public IActionResult PharmacistDetail(int id)
+        {
+            ViewData["PharmacistId"] = id;
+            return View();
+        }
     }
 }

@@ -4,15 +4,16 @@
 
 <h1 style="margin-bottom:18px">💬 Tư vấn với Dược sĩ</h1>
 
-<div class="chat-layout customer-chat">
-    <div class="chat-panel" id="chatRoot">
+<div class="chat-layout customer-chat has-sidebar" id="chatRoot">
+    <aside class="chat-conv-list">
+        <div class="chat-conv-head">💊 Chọn dược sĩ</div>
+        <div id="chatPharmacistList" class="chat-conv-body"></div>
+    </aside>
+
+    <section class="chat-panel">
         <div class="chat-header">
-            <div class="chat-peer">
-                <div class="conv-avatar big">💊</div>
-                <div>
-                    <div class="peer-name">Dược sĩ MedCare</div>
-                    <div class="peer-sub">Trực tuyến · Phản hồi trong vài phút</div>
-                </div>
+            <div class="chat-peer" id="chatHeader">
+                <div class="peer-name">Chọn dược sĩ để bắt đầu</div>
             </div>
         </div>
 
@@ -20,13 +21,10 @@
 
         <div class="chat-input-bar">
             <input type="file" id="chatImage" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none">
-
-            <!-- label for = mở file dialog bằng HTML, không phụ thuộc JS -->
             <label for="chatImage" id="chatImageBtn" class="btn muted" title="Gửi ảnh"
                    style="flex-shrink:0;padding:8px 12px;cursor:pointer;margin:0;display:inline-flex;align-items:center;user-select:none">
                 📷
             </label>
-
             <div style="flex:1;display:flex;flex-direction:column;gap:6px;min-width:0">
                 <img id="chatImagePreview" alt="Xem trước"
                      style="display:none;max-height:80px;max-width:160px;border-radius:8px;object-fit:contain">
@@ -34,7 +32,7 @@
             </div>
             <button type="button" id="chatSend" class="primary-btn">Gửi ➤</button>
         </div>
-    </div>
+    </section>
 </div>
 
 @section Scripts {
