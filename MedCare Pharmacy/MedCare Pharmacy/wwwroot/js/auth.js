@@ -56,7 +56,7 @@ function renderAuthArea() {
 
     const u = getCurrentUser();
     if (!u) {
-        el.innerHTML = `<a href="/Customer/Login" class="link-btn">👤 Đăng nhập</a>`;
+        el.innerHTML = `<a href="/Customer/Login" class="link-btn" style="text-decoration:none">👤 Đăng nhập</a>`;
         return;
     }
 
@@ -70,7 +70,7 @@ function renderAuthArea() {
 
     el.innerHTML = `
     <div class="user-menu">
-        <button type="button" class="link-btn user-btn" onclick="toggleUserMenu(event)" style="display:inline-flex;align-items:center">
+        <button type="button" class="link-btn user-btn" onclick="toggleUserMenu(event)" style="display:inline-flex;align-items:center;text-decoration:none">
             ${avatarHtml(u, 28)}
             ${escapeHtml(u.name || u.email)}
             <span class="caret">▾</span>

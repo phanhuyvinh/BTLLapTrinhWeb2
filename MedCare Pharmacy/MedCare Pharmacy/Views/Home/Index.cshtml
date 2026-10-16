@@ -2,17 +2,55 @@
     ViewData["Title"] = "Trang chủ";
 }
 
-<!-- 1. Hero Banner -->
-<section class="hero">
-    <div class="hero-content">
-        <p class="eyebrow">NHÀ THUỐC TRỰC TUYẾN</p>
-        <h1>Chăm sóc sức khỏe<br>cho cả gia đình</h1>
-        <p>Sản phẩm đa dạng · Nguồn gốc rõ ràng · Giao hàng nhanh</p>
-        <button class="primary-btn" onclick="document.getElementById('products').scrollIntoView({behavior:'smooth'})">
-            Mua sắm ngay
-        </button>
+<!-- 1. Hero Banner Slider -->
+<section class="hero-slider" id="heroSlider" aria-label="Banner giới thiệu">
+    <div class="hero-track">
+        <!-- Slide 1: banner gốc -->
+        <div class="hero-slide active" data-index="0">
+            <div class="hero-content">
+                <p class="eyebrow">NHÀ THUỐC TRỰC TUYẾN</p>
+                <h1>Chăm sóc sức khỏe<br>cho cả gia đình</h1>
+                <p>Sản phẩm đa dạng · Nguồn gốc rõ ràng · Giao hàng nhanh</p>
+                <button type="button" class="primary-btn" onclick="document.getElementById('products').scrollIntoView({behavior:'smooth'})">
+                    Mua sắm ngay
+                </button>
+            </div>
+            <div class="hero-icon" aria-hidden="true">💊</div>
+        </div>
+        <!-- Slide 2: Thuốc chính hãng -->
+        <div class="hero-slide" data-index="1">
+            <div class="hero-content">
+                <p class="eyebrow">AN TÂM SỬ DỤNG</p>
+                <h1>Thuốc chính hãng,<br>nguồn gốc rõ ràng</h1>
+                <p>Thông tin minh bạch · Lựa chọn dễ dàng · Mua sắm tiện lợi</p>
+                <a class="primary-btn" href="/Customer/Products?cat=Thuốc">Khám phá sản phẩm</a>
+            </div>
+            <div class="hero-icon" aria-hidden="true">🩺</div>
+        </div>
+        <!-- Slide 3: Vitamin -->
+        <div class="hero-slide" data-index="2">
+            <div class="hero-content">
+                <p class="eyebrow">CHĂM SÓC MỖI NGÀY</p>
+                <h1>Bổ sung dưỡng chất<br>cho cơ thể</h1>
+                <p>Đa dạng vitamin · Dễ dàng lựa chọn · Thông tin rõ ràng</p>
+                <a class="primary-btn" href="/Customer/Products?cat=Vitamin">Xem vitamin</a>
+            </div>
+            <div class="hero-icon" aria-hidden="true">🍊</div>
+        </div>
+        <!-- Slide 4: Gia đình -->
+        <div class="hero-slide" data-index="3">
+            <div class="hero-content">
+                <p class="eyebrow">VÌ SỨC KHỎE GIA ĐÌNH</p>
+                <h1>Chăm sóc sức khỏe<br>từ những điều nhỏ nhất</h1>
+                <p>Sản phẩm thiết yếu · Chăm sóc cá nhân · Tiện lợi mỗi ngày</p>
+                <a class="primary-btn" href="/Customer/Products">Khám phá ngay</a>
+            </div>
+            <div class="hero-icon" aria-hidden="true">👨‍👩‍👧</div>
+        </div>
     </div>
-    <div class="hero-icon">💊</div>
+    <button type="button" class="hero-nav prev" id="heroPrev" aria-label="Slide trước">‹</button>
+    <button type="button" class="hero-nav next" id="heroNext" aria-label="Slide sau">›</button>
+    <div class="hero-dots" id="heroDots" role="tablist" aria-label="Chọn slide"></div>
 </section>
 
 <!-- 2. Danh mục nổi bật -->
@@ -51,14 +89,45 @@
     <div id="productList" class="products"></div>
 </section>
 
-<!-- 4. Health Banner -->
-<section class="health-banner">
-    <div>
-        <p class="eyebrow">MEDCARE CARE</p>
-        <h2>Đặt thuốc dễ dàng,<br>chăm sóc sức khỏe an tâm.</h2>
-        <p>Hệ thống MedCare Pharmacy tích hợp ASP.NET Core MVC & Web API.</p>
+<!-- 4. Health Banner Slider -->
+<section class="health-banner health-slider" id="healthSlider" aria-label="Banner giới thiệu MedCare">
+    <div class="health-track">
+        <div class="health-slide active" data-index="0">
+            <div class="health-content">
+                <p class="eyebrow">MEDCARE CARE</p>
+                <h2>Đặt thuốc dễ dàng,<br>chăm sóc sức khỏe an tâm.</h2>
+                <p>MedCare đồng hành cùng bạn trên hành trình chăm sóc sức khỏe mỗi ngày.</p>
+            </div>
+            <div class="health-icon" aria-hidden="true">🩺</div>
+        </div>
+        <div class="health-slide" data-index="1">
+            <div class="health-content">
+                <p class="eyebrow">SỐNG KHỎE MỖI NGÀY</p>
+                <h2>Phòng bệnh hơn chữa bệnh.</h2>
+                <p>Chủ động chăm sóc bản thân và duy trì những thói quen sống lành mạnh.</p>
+            </div>
+            <div class="health-icon" aria-hidden="true">🌿</div>
+        </div>
+        <div class="health-slide" data-index="2">
+            <div class="health-content">
+                <p class="eyebrow">SỬ DỤNG THUỐC AN TOÀN</p>
+                <h2>Đúng thuốc, đúng cách,<br>đúng hướng dẫn.</h2>
+                <p>Tìm hiểu kỹ thông tin thuốc và hỏi ý kiến dược sĩ khi cần thiết.</p>
+            </div>
+            <div class="health-icon" aria-hidden="true">💊</div>
+        </div>
+        <div class="health-slide" data-index="3">
+            <div class="health-content">
+                <p class="eyebrow">MEDCARE ĐỒNG HÀNH</p>
+                <h2>Sức khỏe là tài sản<br>quý giá nhất.</h2>
+                <p>Hãy quan tâm đến sức khỏe của mình và những người thân yêu mỗi ngày.</p>
+            </div>
+            <div class="health-icon" aria-hidden="true">❤️</div>
+        </div>
     </div>
-    <div class="health-icon">🩺</div>
+    <button type="button" class="health-nav prev" id="healthPrev" aria-label="Slide trước">‹</button>
+    <button type="button" class="health-nav next" id="healthNext" aria-label="Slide sau">›</button>
+    <div class="health-dots" id="healthDots" role="tablist" aria-label="Chọn slide"></div>
 </section>
 
 @section Scripts {
@@ -71,6 +140,134 @@
             if (typeof renderHomeProducts === "function") renderHomeProducts();
             const s = document.getElementById("sortSelect");
             if (s) s.addEventListener("change", renderHomeProducts);
+            initHeroSlider();
+            initHealthSlider();
         });
+
+        function initHeroSlider() {
+            const root = document.getElementById("heroSlider");
+            if (!root) return;
+            const slides = Array.from(root.querySelectorAll(".hero-slide"));
+            const dotsWrap = document.getElementById("heroDots");
+            const prevBtn = document.getElementById("heroPrev");
+            const nextBtn = document.getElementById("heroNext");
+            if (!slides.length) return;
+
+            let index = 0;
+            let timer = null;
+            const INTERVAL = 4500;
+
+            slides.forEach((_, i) => {
+                const dot = document.createElement("button");
+                dot.type = "button";
+                dot.className = "hero-dot" + (i === 0 ? " active" : "");
+                dot.setAttribute("aria-label", "Chuyển đến slide " + (i + 1));
+                dot.addEventListener("click", () => goTo(i, true));
+                dotsWrap.appendChild(dot);
+            });
+            const dots = Array.from(dotsWrap.querySelectorAll(".hero-dot"));
+
+            function goTo(i, userAction) {
+                index = (i + slides.length) % slides.length;
+                slides.forEach((el, k) => el.classList.toggle("active", k === index));
+                dots.forEach((el, k) => el.classList.toggle("active", k === index));
+                if (userAction) restart();
+            }
+
+            function next() { goTo(index + 1, false); }
+            function prev() { goTo(index - 1, false); }
+
+            function start() {
+                stop();
+                timer = setInterval(next, INTERVAL);
+            }
+            function stop() {
+                if (timer) { clearInterval(timer); timer = null; }
+            }
+            function restart() {
+                stop();
+                start();
+            }
+
+            if (prevBtn) prevBtn.addEventListener("click", () => { prev(); restart(); });
+            if (nextBtn) nextBtn.addEventListener("click", () => { next(); restart(); });
+
+            root.addEventListener("mouseenter", stop);
+            root.addEventListener("mouseleave", start);
+            root.addEventListener("focusin", stop);
+            root.addEventListener("focusout", (e) => {
+                if (!root.contains(e.relatedTarget)) start();
+            });
+
+            // Pause when tab hidden
+            document.addEventListener("visibilitychange", () => {
+                if (document.hidden) stop(); else start();
+            });
+
+            start();
+        }
+        function initHealthSlider() {
+            const root = document.getElementById("healthSlider");
+            if (!root || root.dataset.sliderReady === "1") return;
+            root.dataset.sliderReady = "1";
+
+            const slides = Array.from(root.querySelectorAll(".health-slide"));
+            const dotsWrap = document.getElementById("healthDots");
+            const prevBtn = document.getElementById("healthPrev");
+            const nextBtn = document.getElementById("healthNext");
+            if (!slides.length || !dotsWrap) return;
+
+            let index = 0;
+            let timer = null;
+            const INTERVAL = 5000;
+
+            slides.forEach((_, i) => {
+                const dot = document.createElement("button");
+                dot.type = "button";
+                dot.className = "health-dot" + (i === 0 ? " active" : "");
+                dot.setAttribute("aria-label", "Chuyển đến slide " + (i + 1));
+                dot.addEventListener("click", () => goTo(i, true));
+                dotsWrap.appendChild(dot);
+            });
+            const dots = Array.from(dotsWrap.querySelectorAll(".health-dot"));
+
+            function goTo(i, userAction) {
+                index = (i + slides.length) % slides.length;
+                slides.forEach((el, k) => el.classList.toggle("active", k === index));
+                dots.forEach((el, k) => el.classList.toggle("active", k === index));
+                if (userAction) restart();
+            }
+
+            function next() { goTo(index + 1, false); }
+            function prev() { goTo(index - 1, false); }
+
+            function start() {
+                stop();
+                timer = setInterval(next, INTERVAL);
+            }
+            function stop() {
+                if (timer) { clearInterval(timer); timer = null; }
+            }
+            function restart() {
+                stop();
+                start();
+            }
+
+            if (prevBtn) prevBtn.addEventListener("click", () => { prev(); restart(); });
+            if (nextBtn) nextBtn.addEventListener("click", () => { next(); restart(); });
+
+            root.addEventListener("mouseenter", stop);
+            root.addEventListener("mouseleave", start);
+            root.addEventListener("focusin", stop);
+            root.addEventListener("focusout", (e) => {
+                if (!root.contains(e.relatedTarget)) start();
+            });
+
+            document.addEventListener("visibilitychange", () => {
+                if (document.hidden) stop(); else start();
+            });
+
+            start();
+        }
     </script>
 }
