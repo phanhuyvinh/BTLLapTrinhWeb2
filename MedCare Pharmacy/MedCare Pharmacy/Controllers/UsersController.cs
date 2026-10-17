@@ -64,25 +64,33 @@ namespace MedCare_Pharmacy.Controllers
         [Authorize(Roles = "admin")]
         public async Task<IActionResult> Create([FromBody] CreateUserDto dto)
         {
-            if (string.IsNullOrWhiteSpace(dto.FullName) || string.IsNullOrWhiteSpace(dto.Email))
+            if (string.IsNullOrWhiteSpace(dto.FullName) || string.IsNullOrWhiteSpace(dto.Email) ||
+                string.IsNullOrWhiteSpace(dto.Password) || dto.Password.Length < 12 || dto.Password.Length > 128 ||
+                !dto.Password.Any(char.IsLetter) || !dto.Password.Any(char.IsDigit))
             {
-                return BadRequest(new { message = "Họ tên và Email bắt buộc" });
+                return BadRequest(new { message = "Cần họ tên, email và mật khẩu tối thiểu 12 ký tự gồm chữ và số." });
             }
 
-            if (await _context.Users.AnyAsync(u => u.Email == dto.Email))
+            var email = dto.Email.Trim().ToLowerInvariant();
+            var role = (dto.Role ?? "customer").Trim().ToLowerInvariant();
+            if (role is not ("admin" or "pharmacist" or "customer"))
+                return BadRequest(new { message = "Vai trò không hợp lệ." });
+            if (dto.FullName.Trim().Length > 150 || email.Length > 150 || (dto.Phone?.Length ?? 0) > 20 ||
+                !new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(email))
+                return BadRequest(new { message = "Thông tin tài khoản không hợp lệ hoặc vượt giới hạn độ dài." });
+
+            if (await _context.Users.AnyAsync(u => u.Email == email))
             {
                 return BadRequest(new { message = "Email đã được sử dụng" });
             }
-
-            var password = string.IsNullOrWhiteSpace(dto.Password) ? "123456" : dto.Password;
 
             var user = new User
             {
                 FullName = dto.FullName.Trim(),
                 Phone = dto.Phone?.Trim() ?? "",
-                Email = dto.Email.Trim(),
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
-                Role = (dto.Role ?? "customer").ToLower(),
+                Email = email,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
+                Role = role,
                 Status = string.IsNullOrWhiteSpace(dto.Status) ? "Active" : NormalizeStatus(dto.Status),
                 CreatedAt = DateTime.Now
             };
@@ -114,27 +122,48 @@ namespace MedCare_Pharmacy.Controllers
             var user = await _context.Users.FindAsync(id);
             if (user == null) return NotFound(new { message = "Không tìm thấy người dùng" });
 
+            var newRole = string.IsNullOrWhiteSpace(dto.Role) ? user.Role : dto.Role.Trim().ToLowerInvariant();
+            var newStatus = string.IsNullOrWhiteSpace(dto.Status) ? user.Status : NormalizeStatus(dto.Status);
+            if (newRole is not ("admin" or "pharmacist" or "customer"))
+                return BadRequest(new { message = "Vai trò không hợp lệ." });
+            if (id == int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "-1") &&
+                (newRole != "admin" || newStatus != "Active"))
+                return BadRequest(new { message = "Không thể tự hạ quyền hoặc khóa tài khoản đang đăng nhập." });
+            if (user.Role == "admin" && user.Status == "Active" &&
+                (newRole != "admin" || newStatus != "Active") &&
+                !await _context.Users.AnyAsync(u => u.Id != id && u.Role == "admin" && u.Status == "Active"))
+                return Conflict(new { message = "Phải giữ ít nhất một quản trị viên đang hoạt động." });
+
             if (!string.IsNullOrWhiteSpace(dto.FullName))
                 user.FullName = dto.FullName.Trim();
 
             if (dto.Phone != null)
                 user.Phone = dto.Phone.Trim();
 
-            if (!string.IsNullOrWhiteSpace(dto.Email) && dto.Email != user.Email)
+            var normalizedEmail = dto.Email?.Trim().ToLowerInvariant();
+            if (!string.IsNullOrWhiteSpace(normalizedEmail) && normalizedEmail != user.Email)
             {
-                if (await _context.Users.AnyAsync(u => u.Email == dto.Email && u.Id != id))
+                if (normalizedEmail.Length > 150 || !new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(normalizedEmail))
+                    return BadRequest(new { message = "Email không hợp lệ." });
+                if (await _context.Users.AnyAsync(u => u.Email == normalizedEmail && u.Id != id))
                     return BadRequest(new { message = "Email đã được sử dụng" });
-                user.Email = dto.Email.Trim();
+                user.Email = normalizedEmail;
             }
 
-            if (!string.IsNullOrWhiteSpace(dto.Role))
-                user.Role = dto.Role.ToLower();
+            if ((dto.FullName?.Length ?? 0) > 150 || (dto.Phone?.Length ?? 0) > 20)
+                return BadRequest(new { message = "Họ tên hoặc số điện thoại vượt giới hạn độ dài." });
 
-            if (!string.IsNullOrWhiteSpace(dto.Status))
-                user.Status = NormalizeStatus(dto.Status);
+            user.Role = newRole;
+
+            user.Status = newStatus;
 
             if (!string.IsNullOrWhiteSpace(dto.Password))
+            {
+                if (dto.Password.Length < 12 || dto.Password.Length > 128 ||
+                    !dto.Password.Any(char.IsLetter) || !dto.Password.Any(char.IsDigit))
+                    return BadRequest(new { message = "Mật khẩu cần tối thiểu 12 ký tự gồm chữ và số." });
                 user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+            }
 
             await _context.SaveChangesAsync();
             return Ok(new { success = true, message = "Đã cập nhật tài khoản" });
@@ -147,6 +176,13 @@ namespace MedCare_Pharmacy.Controllers
         {
             var user = await _context.Users.FindAsync(id);
             if (user == null) return NotFound(new { message = "Không tìm thấy người dùng" });
+
+            var currentId = int.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var parsedId) ? parsedId : -1;
+            if (user.Id == currentId && user.Status.Equals("Active", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { message = "Không thể tự khóa tài khoản đang đăng nhập." });
+            if (user.Role == "admin" && user.Status.Equals("Active", StringComparison.OrdinalIgnoreCase) &&
+                !await _context.Users.AnyAsync(u => u.Id != id && u.Role == "admin" && u.Status == "Active"))
+                return Conflict(new { message = "Phải giữ ít nhất một quản trị viên đang hoạt động." });
 
             user.Status = user.Status.Equals("Active", StringComparison.OrdinalIgnoreCase)
                 ? "Locked"

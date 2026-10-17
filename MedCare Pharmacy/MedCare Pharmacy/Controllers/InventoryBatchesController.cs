@@ -1,5 +1,6 @@
 ﻿using MedCare_Pharmacy.Models.Data;
 using MedCare_Pharmacy.Models.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,6 +8,7 @@ namespace MedCare_Pharmacy.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize(Roles = "admin,pharmacist")]
     public class InventoryBatchesController : ControllerBase
     {
         private readonly AppDbContext _context;
@@ -103,11 +105,23 @@ namespace MedCare_Pharmacy.Controllers
                         return BadRequest(new { message = "Ngày sản xuất phải trước hạn sử dụng" });
                     }
 
-                    var product = await _context.Products.FindAsync(item.ProductId);
-                    if (product == null)
+                    if (string.IsNullOrWhiteSpace(item.LotNumber) || item.LotNumber.Trim().Length > 100 ||
+                        item.ImportPrice <= 0 || item.ImportPrice > 9999999999999999.99m)
+                        return BadRequest(new { message = "Số lô và giá nhập phải hợp lệ." });
+                    if (item.ExpDate.Date < DateTime.UtcNow.Date)
+                        return BadRequest(new { message = "Không thể nhập lô hàng đã hết hạn." });
+
+                    var exists = await _context.Products.AnyAsync(p => p.Id == item.ProductId);
+                    if (!exists)
                     {
                         return BadRequest(new { message = $"Không tìm thấy sản phẩm ID {item.ProductId}" });
                     }
+
+                    var stockUpdated = await _context.Products
+                        .Where(p => p.Id == item.ProductId && p.StockQuantity <= int.MaxValue - item.Quantity)
+                        .ExecuteUpdateAsync(s => s.SetProperty(p => p.StockQuantity, p => p.StockQuantity + item.Quantity));
+                    if (stockUpdated != 1)
+                        return Conflict(new { message = "Số lượng tồn kho vượt giới hạn hoặc sản phẩm không còn tồn tại." });
 
                     var batch = new InventoryBatch
                     {
@@ -121,8 +135,6 @@ namespace MedCare_Pharmacy.Controllers
                     };
                     _context.InventoryBatches.Add(batch);
 
-                    // Tăng tồn kho sản phẩm
-                    product.StockQuantity += item.Quantity;
                 }
 
                 await _context.SaveChangesAsync();
@@ -130,10 +142,10 @@ namespace MedCare_Pharmacy.Controllers
 
                 return Ok(new { success = true, message = "Đã lưu phiếu nhập kho thành công!" });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 await transaction.RollbackAsync();
-                return StatusCode(500, new { message = "Lỗi lưu phiếu nhập: " + ex.Message });
+                return StatusCode(500, new { message = "Lỗi lưu phiếu nhập. Vui lòng thử lại hoặc liên hệ quản trị viên." });
             }
         }
     }

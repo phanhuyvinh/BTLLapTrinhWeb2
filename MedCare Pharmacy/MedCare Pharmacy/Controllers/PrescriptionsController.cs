@@ -41,7 +41,7 @@ namespace MedCare_Pharmacy.Controllers
                 {
                     p.Id,
                     p.FileName,
-                    p.FileUrl,
+                    FileUrl = $"/api/prescriptions/{p.Id}/file",
                     p.FileType,
                     p.UploadedAt
                 })
@@ -68,26 +68,28 @@ namespace MedCare_Pharmacy.Controllers
             if (file.Length > 5 * 1024 * 1024)
                 return BadRequest(new { message = "File tối đa 5MB" });
 
-            var folder = Path.Combine(_env.WebRootPath, "uploads", "prescriptions");
+            var folder = PrivateFolder();
             if (!Directory.Exists(folder))
                 Directory.CreateDirectory(folder);
 
             var storedName = $"{me}_{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid():N}{ext}";
             var physicalPath = Path.Combine(folder, storedName);
 
+            if (!await HasValidSignature(file, ext))
+                return BadRequest(new { message = "Nội dung tệp không khớp với định dạng đã chọn." });
+
             using (var stream = new FileStream(physicalPath, FileMode.Create))
             {
                 await file.CopyToAsync(stream);
             }
 
-            var url = $"/uploads/prescriptions/{storedName}";
             var fileType = ext == ".pdf" ? "pdf" : "image";
 
             var entity = new Prescription
             {
                 UserId = me.Value,
                 FileName = file.FileName,
-                FileUrl = url,
+                FileUrl = storedName,
                 FileType = fileType,
                 UploadedAt = DateTime.Now
             };
@@ -103,11 +105,39 @@ namespace MedCare_Pharmacy.Controllers
                 {
                     entity.Id,
                     entity.FileName,
-                    entity.FileUrl,
+                    FileUrl = $"/api/prescriptions/{entity.Id}/file",
                     entity.FileType,
                     entity.UploadedAt
                 }
             });
+        }
+
+        [HttpGet("{id}/file")]
+        public async Task<IActionResult> Download(int id)
+        {
+            var me = CurrentUserId();
+            if (me == null) return Unauthorized();
+            var item = await _context.Prescriptions.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id);
+            if (item == null) return NotFound();
+
+            var role = User.FindFirst(ClaimTypes.Role)?.Value?.ToLowerInvariant();
+            if (item.UserId != me.Value && role is not ("admin" or "pharmacist")) return Forbid();
+
+            var storedName = Path.GetFileName(item.FileUrl);
+            var path = Path.Combine(PrivateFolder(), storedName);
+            // Support reading existing records while they are migrated from the old public folder.
+            if (!System.IO.File.Exists(path) && item.FileUrl.StartsWith("/uploads/prescriptions/", StringComparison.OrdinalIgnoreCase))
+                path = Path.Combine(_env.WebRootPath, "uploads", "prescriptions", storedName);
+            if (!System.IO.File.Exists(path)) return NotFound(new { message = "Không tìm thấy tệp đơn thuốc." });
+
+            var extension = Path.GetExtension(storedName).ToLowerInvariant();
+            var contentType = extension switch
+            {
+                ".pdf" => "application/pdf",
+                ".png" => "image/png",
+                _ => "image/jpeg"
+            };
+            return PhysicalFile(path, contentType, enableRangeProcessing: true);
         }
 
         // DELETE: api/prescriptions/5
@@ -126,8 +156,10 @@ namespace MedCare_Pharmacy.Controllers
             // Xóa file vật lý nếu còn
             try
             {
-                var physical = Path.Combine(_env.WebRootPath,
-                    item.FileUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+                var storedName = Path.GetFileName(item.FileUrl);
+                var physical = Path.Combine(PrivateFolder(), storedName);
+                if (!System.IO.File.Exists(physical) && item.FileUrl.StartsWith("/uploads/prescriptions/", StringComparison.OrdinalIgnoreCase))
+                    physical = Path.Combine(_env.WebRootPath, "uploads", "prescriptions", storedName);
                 if (System.IO.File.Exists(physical))
                     System.IO.File.Delete(physical);
             }
@@ -137,6 +169,19 @@ namespace MedCare_Pharmacy.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(new { success = true, message = "Đã xóa đơn thuốc" });
+        }
+
+        private string PrivateFolder() => Path.Combine(_env.ContentRootPath, "PrivateUploads", "prescriptions");
+
+        private static async Task<bool> HasValidSignature(IFormFile file, string extension)
+        {
+            var header = new byte[8];
+            await using var stream = file.OpenReadStream();
+            var read = await stream.ReadAsync(header.AsMemory());
+            if (extension == ".pdf") return read >= 5 && header[0] == 0x25 && header[1] == 0x50 && header[2] == 0x44 && header[3] == 0x46 && header[4] == 0x2D;
+            if (extension == ".png") return read >= 8 && header.SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+            if (extension is ".jpg" or ".jpeg") return read >= 3 && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF;
+            return false;
         }
     }
 }
