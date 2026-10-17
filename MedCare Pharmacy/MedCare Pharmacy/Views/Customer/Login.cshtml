@@ -47,33 +47,6 @@
             <span>✚</span> MedCare
         </a>
 
-        <div id="alreadyLogged" style="display:none">
-            <h2>Bạn đã đăng nhập</h2>
-            <p class="sub" id="loggedAs"></p>
-
-            <div style="display:flex;gap:8px;margin-top:14px">
-                <a id="goDashBtn"
-                   class="primary-btn"
-                   style="flex:1;text-align:center;text-decoration:none;padding:12px">
-                    Vào hệ thống
-                </a>
-
-                <button type="button"
-                        class="btn danger"
-                        style="flex:1"
-                        onclick="handleLogout(event)">
-                    Đăng xuất
-                </button>
-            </div>
-
-            <a class="back"
-               asp-controller="Home"
-               asp-action="Index"
-               style="margin-top:20px">
-                ← Về trang chủ
-            </a>
-        </div>
-
         <div id="loginBlock">
             <h2>Đăng nhập</h2>
             <p class="sub">Chào mừng bạn trở lại MedCare Pharmacy</p>
@@ -179,72 +152,9 @@
                 }
             }
 
-            document.addEventListener("DOMContentLoaded", function () {
-                const u = (typeof getCurrentUser === "function") ? getCurrentUser() : null;
-
-                const params = new URLSearchParams(location.search);
-                const required = (params.get("role") || "customer").toLowerCase();
-                const next = params.get("next");
-
-                if (!u) return;
-
-                const isAllowed =
-                    required === "customer" ||
-                    u.role === required ||
-                    u.role === "admin";
-
-                let target = "@Url.Action("Products", "Customer")";
-
-                if (required === "admin" && u.role === "admin") {
-                    target = "@Url.Action("Index", "Admin")";
-                }
-                else if (required === "pharmacist" && (u.role === "pharmacist" || u.role === "admin")) {
-                    target = "@Url.Action("Index", "Pharmacist")";
-                }
-                else if (required === "customer" && next) {
-                    target = next;
-                }
-
-                if (isAllowed) {
-                    const overlay = document.createElement("div");
-                    overlay.style.cssText =
-                        "position:fixed;inset:0;display:grid;place-items:center;" +
-                        "background:#f4fbf8;font-family:Arial;font-size:16px;" +
-                        "color:#0b8f66;font-weight:600;z-index:9999";
-                    overlay.textContent = "Đang chuyển hướng...";
-                    document.body.appendChild(overlay);
-
-                    location.replace(target);
-                    return;
-                }
-
-                const form = document.getElementById("loginForm");
-                if (form) form.style.display = "none";
-
-                const hint = document.getElementById("roleHint");
-                if (hint) hint.style.display = "none";
-
-                const sw = document.getElementById("switchBlock");
-                if (sw) sw.style.display = "none";
-
-                const block = document.getElementById("alreadyLogged");
-                if (block) {
-                    block.style.display = "block";
-                    const loggedAs = document.getElementById("loggedAs");
-                    if (loggedAs) {
-                        loggedAs.textContent =
-                            "Bạn đang đăng nhập với vai trò '" + (u.role || "customer") + "' (" + (u.name || u.email) + "). " +
-                            "Khu vực này yêu cầu quyền '" + required + "'.";
-                    }
-
-                    const btn = document.getElementById("goDashBtn");
-                    if (btn) {
-                        if (u.role === "admin") btn.href = "@Url.Action("Index", "Admin")";
-                        else if (u.role === "pharmacist") btn.href = "@Url.Action("Index", "Pharmacist")";
-                        else btn.href = "@Url.Action("Products", "Customer")";
-                    }
-                }
-            });
+            // Do not treat localStorage as an authenticated server session.
+            // The browser copy may outlive the HttpOnly PageCookie; automatically
+            // redirecting from stale local state can create a login/dashboard loop.
     </script>
 </body>
 </html>

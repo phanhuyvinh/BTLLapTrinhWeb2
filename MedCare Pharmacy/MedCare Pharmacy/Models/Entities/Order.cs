@@ -22,6 +22,12 @@ namespace MedCare_Pharmacy.Models.Entities
         // Trạng thái đơn ("Pending", "Approved", "Cancelled", "Completed")
         public string Status { get; set; } = "Pending";
 
+        public string PaymentMethod { get; set; } = "COD";
+        public string PaymentStatus { get; set; } = "Unpaid";
+        public decimal? AmountReceived { get; set; }
+        public decimal ChangeAmount { get; set; }
+        public DateTime? PaidAt { get; set; }
+
         public string? PrescriptionUrl { get; set; }
         public decimal TotalAmount { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.Now;

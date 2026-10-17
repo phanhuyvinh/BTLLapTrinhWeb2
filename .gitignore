@@ -5,6 +5,7 @@
 # Build output
 **/bin/
 **/obj/
+/.build-inventory-feature/
 
 # User-specific files
 *.user

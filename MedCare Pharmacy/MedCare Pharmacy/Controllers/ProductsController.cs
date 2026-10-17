@@ -21,7 +21,7 @@ namespace MedCare_Pharmacy.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAll([FromQuery] string? q, [FromQuery] string? cat, [FromQuery] string? sort)
         {
-            var query = _context.Products.Include(p => p.Category).Include(p => p.Supplier).AsQueryable();
+            var query = _context.Products.AsNoTracking().Include(p => p.Category).Include(p => p.Supplier).AsQueryable();
 
             // Tìm kiếm từ khóa
             if (!string.IsNullOrEmpty(q))
@@ -47,6 +47,7 @@ namespace MedCare_Pharmacy.Controllers
             else if (sort == "high") query = query.OrderByDescending(p => p.Price);
 
             var products = await query.ToListAsync();
+            await ApplySellableStockAsync(products);
             return Ok(products);
         }
 
@@ -55,10 +56,12 @@ namespace MedCare_Pharmacy.Controllers
         public async Task<IActionResult> GetById(int id)
         {
             var product = await _context.Products
+                .AsNoTracking()
                 .Include(p => p.Category)
                 .Include(p => p.Supplier)
                 .FirstOrDefaultAsync(p => p.Id == id);
             if (product == null) return NotFound(new { message = "Không tìm thấy sản phẩm" });
+            await ApplySellableStockAsync([product]);
             return Ok(product);
         }
 
@@ -122,5 +125,23 @@ namespace MedCare_Pharmacy.Controllers
             !string.IsNullOrWhiteSpace(product.Unit) && product.Unit.Trim().Length <= 50 &&
             (product.Code?.Length ?? 0) <= 50 &&
             (product.ActiveIngredient?.Length ?? 0) <= 200;
+
+        private async Task ApplySellableStockAsync(List<Product> products)
+        {
+            if (products.Count == 0) return;
+            var ids = products.Select(p => p.Id).ToList();
+            var today = DateTime.Today;
+            var batches = await _context.InventoryBatches.AsNoTracking()
+                .Where(b => ids.Contains(b.ProductId) && b.Quantity > 0 && b.ExpDate >= today)
+                .GroupBy(b => b.ProductId)
+                .Select(g => new { ProductId = g.Key, Quantity = g.Sum(b => b.Quantity) })
+                .ToDictionaryAsync(x => x.ProductId, x => x.Quantity);
+
+            foreach (var product in products)
+            {
+                var sellable = batches.GetValueOrDefault(product.Id);
+                product.StockQuantity = Math.Min(product.StockQuantity, sellable);
+            }
+        }
     }
 }

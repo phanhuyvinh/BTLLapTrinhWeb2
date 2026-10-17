@@ -1,7 +1,10 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 
+using Microsoft.AspNetCore.Authorization;
+
 namespace MedCare_Pharmacy.Controllers
 {
+    [Authorize(AuthenticationSchemes = "PageCookie", Roles = "admin,pharmacist")]
     public class PharmacistController : Controller
     {
         // GET: /Pharmacist hoặc /Pharmacist/Index (Ánh xạ từ pharmacist/index.html)

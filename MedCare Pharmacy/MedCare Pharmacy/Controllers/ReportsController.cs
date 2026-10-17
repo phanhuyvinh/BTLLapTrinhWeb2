@@ -26,7 +26,7 @@ namespace MedCare_Pharmacy.Controllers
 
             var orders = await _context.Orders
                 .Where(o => o.CreatedAt >= fromDate && o.CreatedAt <= toDate
-                            && o.Status != "Cancelled")
+                            && o.Status != "Cancelled" && o.PaymentStatus == "Paid")
                 .ToListAsync();
 
             // Doanh thu theo ngày
@@ -80,7 +80,7 @@ namespace MedCare_Pharmacy.Controllers
                         join p in _context.Products on d.ProductId equals p.Id
                         where o.CreatedAt >= fromDate
                               && o.CreatedAt <= toDate
-                              && o.Status != "Cancelled"
+                              && o.Status != "Cancelled" && o.PaymentStatus == "Paid"
                         group d by new { p.Id, p.Name } into g
                         select new
                         {
@@ -104,7 +104,7 @@ namespace MedCare_Pharmacy.Controllers
         public async Task<IActionResult> GetDashboard()
         {
             var totalRevenue = await _context.Orders
-                .Where(o => o.Status != "Cancelled")
+                .Where(o => o.Status != "Cancelled" && o.PaymentStatus == "Paid")
                 .SumAsync(o => (decimal?)o.TotalAmount) ?? 0;
 
             var totalOrders = await _context.Orders.CountAsync();
@@ -114,13 +114,8 @@ namespace MedCare_Pharmacy.Controllers
             var pendingOrders = await _context.Orders
                 .CountAsync(o => o.Status == "Pending");
 
-            var lowStock = await _context.Products
-                .CountAsync(p => p.StockQuantity > 0 && p.StockQuantity <= 20);
-
-            var outOfStock = await _context.Products
-                .CountAsync(p => p.StockQuantity <= 0);
-
             var today = DateTime.Today;
+            var (lowStock, outOfStock) = await GetStockAlertCountsAsync(today);
             var nearExpiry = await _context.InventoryBatches
                 .CountAsync(b => b.ExpDate >= today
                                  && b.ExpDate <= today.AddDays(90)
@@ -154,14 +149,11 @@ namespace MedCare_Pharmacy.Controllers
                             && o.Status != "Cancelled")
                 .ToListAsync();
 
-            var revenueToday = todayOrders.Sum(o => o.TotalAmount);
+            var revenueToday = todayOrders.Where(o => o.PaymentStatus == "Paid").Sum(o => o.TotalAmount);
             var posCount = todayOrders.Count(o => o.OrderType == "POS");
             var onlineCount = todayOrders.Count(o => o.OrderType == "Online");
 
-            var lowStock = await _context.Products
-                .CountAsync(p => p.StockQuantity > 0 && p.StockQuantity <= 20);
-            var outOfStock = await _context.Products
-                .CountAsync(p => p.StockQuantity <= 0);
+            var (lowStock, outOfStock) = await GetStockAlertCountsAsync(today);
             var nearExpiry = await _context.InventoryBatches
                 .CountAsync(b => b.ExpDate >= today
                                  && b.ExpDate <= today.AddDays(90)
@@ -185,6 +177,20 @@ namespace MedCare_Pharmacy.Controllers
                 alerts,
                 chatUnread
             });
+        }
+
+        private async Task<(int LowStock, int OutOfStock)> GetStockAlertCountsAsync(DateTime today)
+        {
+            var products = await _context.Products.AsNoTracking()
+                .Select(p => new { p.Id, p.StockQuantity }).ToListAsync();
+            var sellable = await _context.InventoryBatches.AsNoTracking()
+                .Where(b => b.Quantity > 0 && b.ExpDate >= today)
+                .GroupBy(b => b.ProductId)
+                .Select(g => new { ProductId = g.Key, Quantity = g.Sum(b => b.Quantity) })
+                .ToDictionaryAsync(x => x.ProductId, x => x.Quantity);
+
+            var available = products.Select(p => Math.Min(p.StockQuantity, sellable.GetValueOrDefault(p.Id))).ToList();
+            return (available.Count(x => x > 0 && x <= 20), available.Count(x => x <= 0));
         }
     }
 }

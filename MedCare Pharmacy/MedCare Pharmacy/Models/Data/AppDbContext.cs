@@ -16,6 +16,9 @@ namespace MedCare_Pharmacy.Models.Data
         public DbSet<Supplier> Suppliers { get; set; }
         public DbSet<User> Users { get; set; }
         public DbSet<Prescription> Prescriptions { get; set; }
+        public DbSet<PurchaseReceipt> PurchaseReceipts { get; set; }
+        public DbSet<PurchaseReceiptLine> PurchaseReceiptLines { get; set; }
+        public DbSet<InventoryMovement> InventoryMovements { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -30,6 +33,9 @@ namespace MedCare_Pharmacy.Models.Data
             modelBuilder.Entity<Supplier>().ToTable("Supplier");
             modelBuilder.Entity<User>().ToTable("User");
             modelBuilder.Entity<Prescription>().ToTable("Prescription");
+            modelBuilder.Entity<PurchaseReceipt>().ToTable("PurchaseReceipt");
+            modelBuilder.Entity<PurchaseReceiptLine>().ToTable("PurchaseReceiptLine");
+            modelBuilder.Entity<InventoryMovement>().ToTable("InventoryMovement");
             modelBuilder.Entity<User>()
                 .HasIndex(u => u.Email)
                 .IsUnique();
@@ -48,6 +54,8 @@ namespace MedCare_Pharmacy.Models.Data
             modelBuilder.Entity<Order>()
                 .Property(o => o.TotalAmount)
                 .HasPrecision(18, 2);
+            modelBuilder.Entity<Order>().Property(o => o.AmountReceived).HasPrecision(18, 2);
+            modelBuilder.Entity<Order>().Property(o => o.ChangeAmount).HasPrecision(18, 2);
 
             modelBuilder.Entity<OrderDetail>()
                 .Property(d => d.UnitPrice)
@@ -69,6 +77,32 @@ namespace MedCare_Pharmacy.Models.Data
             modelBuilder.Entity<InventoryBatch>()
                 .Property(b => b.ImportPrice)
                 .HasPrecision(18, 2);
+
+            modelBuilder.Entity<PurchaseReceipt>().Property(r => r.TotalAmount).HasPrecision(18, 2);
+            modelBuilder.Entity<PurchaseReceiptLine>().Property(l => l.UnitCost).HasPrecision(18, 2);
+            modelBuilder.Entity<PurchaseReceiptLine>().Property(l => l.LineTotal).HasPrecision(18, 2);
+            modelBuilder.Entity<PurchaseReceipt>()
+                .HasOne(r => r.Supplier).WithMany().HasForeignKey(r => r.SupplierId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<PurchaseReceipt>()
+                .HasOne(r => r.CreatedBy).WithMany().HasForeignKey(r => r.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            modelBuilder.Entity<PurchaseReceiptLine>()
+                .HasOne(l => l.Product).WithMany().HasForeignKey(l => l.ProductId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<PurchaseReceiptLine>()
+                .HasOne(l => l.InventoryBatch).WithMany().HasForeignKey(l => l.InventoryBatchId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<PurchaseReceiptLine>()
+                .HasOne(l => l.PurchaseReceipt).WithMany(r => r.Lines).HasForeignKey(l => l.PurchaseReceiptId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<InventoryMovement>()
+                .HasOne(m => m.Product).WithMany().HasForeignKey(m => m.ProductId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<InventoryMovement>()
+                .HasOne(m => m.InventoryBatch).WithMany().HasForeignKey(m => m.InventoryBatchId).OnDelete(DeleteBehavior.SetNull);
+            modelBuilder.Entity<InventoryMovement>()
+                .HasOne(m => m.PurchaseReceipt).WithMany().HasForeignKey(m => m.PurchaseReceiptId).OnDelete(DeleteBehavior.SetNull);
+            modelBuilder.Entity<InventoryMovement>()
+                .HasOne(m => m.Order).WithMany().HasForeignKey(m => m.OrderId).OnDelete(DeleteBehavior.SetNull);
+            modelBuilder.Entity<InventoryMovement>()
+                .HasOne(m => m.PerformedBy).WithMany().HasForeignKey(m => m.PerformedByUserId).OnDelete(DeleteBehavior.SetNull);
+            modelBuilder.Entity<PurchaseReceipt>().HasIndex(r => r.ReceiptNumber).IsUnique();
+            modelBuilder.Entity<InventoryMovement>().HasIndex(m => m.CreatedAt);
         }
     }
 }

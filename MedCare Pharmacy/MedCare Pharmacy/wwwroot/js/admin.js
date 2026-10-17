@@ -419,6 +419,8 @@ function initNhapKhoPage() {
     document.getElementById("btnSavePo").onclick = savePo;
 
     loadProductsForSelect();
+    loadSuppliers();
+    loadHistory();
     render();
 
     async function loadProductsForSelect() {
@@ -436,6 +438,47 @@ function initNhapKhoPage() {
             sel.innerHTML = `<option value="">-- Lỗi tải thuốc --</option>`;
             showToast(err.message || "Không tải được danh sách thuốc", "error");
         }
+    }
+
+    async function loadSuppliers() {
+        const sel = document.getElementById("poSupplier");
+        if (!sel) return;
+        try {
+            const suppliers = await apiGet(API.SUPPLIERS);
+            const active = Array.isArray(suppliers) ? suppliers.filter(s => (s.status || "Active").toLowerCase() === "active") : [];
+            sel.innerHTML = `<option value="">-- Chọn nhà cung cấp --</option>` + active
+                .map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
+        } catch (err) {
+            sel.innerHTML = `<option value="">-- Lỗi tải nhà cung cấp --</option>`;
+            showToast(err.message || "Không tải được nhà cung cấp", "error");
+        }
+    }
+
+    async function loadHistory() {
+        const receiptBody = document.getElementById("receiptHistoryBody");
+        const movementBody = document.getElementById("movementHistoryBody");
+        try {
+            const [receipts, movements] = await Promise.all([
+                apiGet(API.PURCHASE_RECEIPTS), apiGet(API.INVENTORY_MOVEMENTS)
+            ]);
+            receiptBody.innerHTML = receipts?.length ? receipts.map(r => `
+                <tr><td>${escapeHtml(r.receiptNumber)}</td><td>${escapeHtml(r.supplierName)}</td><td>${r.itemCount}</td>
+                <td>${r.totalQuantity}</td><td>${formatPrice(r.totalAmount)}</td><td>${formatDate(r.createdAt)}</td></tr>`).join("")
+                : `<tr><td colspan="6" class="empty">Chưa có phiếu nhập.</td></tr>`;
+            movementBody.innerHTML = movements?.length ? movements.map(m => `
+                <tr><td>${formatDate(m.createdAt)}</td><td>${escapeHtml(m.productName)}</td><td>${movementLabel(m.movementType)}</td>
+                <td>${m.quantity > 0 ? "+" : ""}${m.quantity}</td><td>${m.stockBefore}</td><td>${m.stockAfter}</td>
+                <td>${escapeHtml(m.lotNumber || m.receiptNumber || (m.orderId ? `Đơn #${m.orderId}` : "—"))}</td>
+                <td>${escapeHtml(m.performedBy || "Hệ thống")}</td></tr>`).join("")
+                : `<tr><td colspan="8" class="empty">Chưa có biến động tồn kho.</td></tr>`;
+        } catch (err) {
+            receiptBody.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(err.message || "Không tải được phiếu nhập")}</td></tr>`;
+            movementBody.innerHTML = `<tr><td colspan="8" class="empty">${escapeHtml(err.message || "Không tải được lịch sử kho")}</td></tr>`;
+        }
+    }
+
+    function movementLabel(type) {
+        return ({ Import: "Nhập hàng", Sale: "Bán hàng", OrderCancelled: "Hoàn tồn do hủy đơn" })[type] || type;
     }
 
     function render() {
@@ -511,8 +554,15 @@ function initNhapKhoPage() {
             return;
         }
 
-        // Body đúng ImportBatchDto
+        const supplierId = Number(document.getElementById("poSupplier").value);
+        if (!supplierId) {
+            showToast("Vui lòng chọn nhà cung cấp", "error");
+            return;
+        }
+
         const body = {
+            supplierId,
+            note: document.getElementById("poNote").value.trim(),
             items: purchaseDraft.map(l => ({
                 productId: l.medId,
                 lotNumber: l.lot,
@@ -527,9 +577,11 @@ function initNhapKhoPage() {
             const result = await apiPost(API.PURCHASE_IMPORT, body);
             showToast(result && result.message ? result.message : "Đã lưu phiếu nhập kho");
             purchaseDraft = [];
+            document.getElementById("poNote").value = "";
             render();
             // Cập nhật lại dropdown (tồn mới)
             await loadProductsForSelect();
+            await loadHistory();
         } catch (err) {
             showToast(err.message || "Lỗi lưu phiếu nhập", "error");
         }

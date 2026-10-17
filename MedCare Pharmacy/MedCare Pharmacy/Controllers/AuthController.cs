@@ -1,6 +1,7 @@
 ﻿using MedCare_Pharmacy.Models.Data;
 using MedCare_Pharmacy.Models.Entities;
 using Microsoft.Data.SqlClient;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -65,6 +66,20 @@ namespace MedCare_Pharmacy.Controllers
             }
 
             var token = GenerateJwtToken(user);
+            var pageClaims = new List<Claim>
+            {
+                new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new(ClaimTypes.Name, user.FullName),
+                new(ClaimTypes.Email, user.Email),
+                new(ClaimTypes.Role, user.Role.ToLowerInvariant())
+            };
+            var principal = new ClaimsPrincipal(new ClaimsIdentity(pageClaims, "PageCookie"));
+            var expireDays = Math.Clamp(_config.GetValue<int?>("Jwt:ExpireDays") ?? 1, 1, 30);
+            await HttpContext.SignInAsync("PageCookie", principal, new AuthenticationProperties
+            {
+                IsPersistent = true,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddDays(expireDays)
+            });
             return Ok(new
             {
                 token,
@@ -79,6 +94,14 @@ namespace MedCare_Pharmacy.Controllers
                     avatarUrl = user.AvatarUrl
                 }
             });
+        }
+
+        [HttpPost("logout")]
+        [AllowAnonymous]
+        public async Task<IActionResult> Logout()
+        {
+            await HttpContext.SignOutAsync("PageCookie");
+            return Ok(new { success = true });
         }
 
         [HttpPost("register")]

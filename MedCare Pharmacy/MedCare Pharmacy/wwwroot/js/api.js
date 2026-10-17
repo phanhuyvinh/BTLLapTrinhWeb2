@@ -92,6 +92,7 @@ const API = {
     // auth
     AUTH_LOGIN:    "/auth/login",
     AUTH_REGISTER: "/auth/register",
+    AUTH_LOGOUT: "/auth/logout",
 
     // catalog
     PRODUCTS:      "/products",
@@ -109,6 +110,8 @@ const API = {
     INV_ALERTS: "/inventorybatches/alerts",
     INVENTORY_BATCHES: "/inventorybatches",
     PURCHASE_IMPORT: "/inventorybatches/import",
+    INVENTORY_MOVEMENTS: "/inventorybatches/movements",
+    PURCHASE_RECEIPTS: "/inventorybatches/receipts",
 
     // pos
     POS_INVOICES:  "/pos/invoices",

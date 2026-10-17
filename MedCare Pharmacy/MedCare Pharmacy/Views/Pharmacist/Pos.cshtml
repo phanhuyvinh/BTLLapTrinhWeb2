@@ -32,7 +32,6 @@
 
             <nav>
                 <a asp-controller="Home" asp-action="Index">🏠 Trang chủ khách hàng</a>
-                <a asp-controller="Admin" asp-action="Index">🛡️ Khu vực Admin</a>
             </nav>
         </aside>
 
@@ -66,12 +65,34 @@
                     <div class="inv-list" id="invList"></div>
                     <div class="totals" id="invTotals"></div>
 
+                    <div class="pos-payment" style="margin-top:14px">
+                        <label for="posPaymentMethod">Phương thức thanh toán</label>
+                        <select id="posPaymentMethod" class="form-control" style="width:100%;margin:6px 0 10px">
+                            <option value="Cash">Tiền mặt</option>
+                            <option value="BankTransfer">Chuyển khoản</option>
+                            <option value="Card">Thẻ ngân hàng</option>
+                        </select>
+                        <div id="posCashFields">
+                            <label for="posAmountReceived">Tiền khách đưa</label>
+                            <input id="posAmountReceived" type="number" min="0" step="1000" inputmode="numeric"
+                                   placeholder="Nhập số tiền nhận" style="width:100%;margin:6px 0">
+                            <div id="posChangeAmount" class="text-muted" aria-live="polite">Tiền thừa: 0đ</div>
+                        </div>
+                        <label id="posNonCashConfirmWrap" style="display:none;margin-top:8px">
+                            <input id="posNonCashConfirmed" type="checkbox">
+                            Đã xác nhận nhận tiền chuyển khoản/thẻ
+                        </label>
+                    </div>
+
                     <button class="primary-btn" style="width:100%;margin-top:12px" id="btnCheckout">
                         Thanh toán
                     </button>
 
                     <button class="btn muted" style="width:100%;margin-top:6px" id="btnClearInvoice">
                         Xóa hóa đơn
+                    </button>
+                    <button class="btn ghost" style="width:100%;margin-top:6px;display:none" id="btnPrintReceipt" type="button">
+                        In hóa đơn gần nhất
                     </button>
                 </aside>
             </div>

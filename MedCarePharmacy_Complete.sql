@@ -1,3 +1,27 @@
+﻿-- =====================================================================
+-- MEDCARE PHARMACY - CONSOLIDATED SQL
+-- File duy nhat de gui doi tac: cai moi hoac nang cap database hien co.
+--
+-- CHON DUNG MOT CACH CHAY:
+-- 1) Database moi/demo: mo file trong SSMS va Execute TOAN BO file.
+--    Luu y: phan cai moi nap lai du lieu san pham mau; khong dung tren DB
+--    dang co du lieu can giu.
+-- 2) Database da co du lieu: KHONG Execute phan cai moi. Trong SSMS, chi
+--    boi den va Execute tu dong "BEGIN EXISTING DATABASE UPGRADE SECTION"
+--    den het file. Phan nay khong xoa/nap lai du lieu san pham.
+--
+-- SQL Server Management Studio (SSMS) can ket noi dung SQL Server instance.
+-- =====================================================================
+-- ============================================================
+-- MedCare Pharmacy - Single-file fresh database setup
+-- Database: MedCarePharmacyDB
+-- Includes schema, demo seed data, inventory receipt/history and payment fields.
+-- IMPORTANT: Intended for a NEW database or disposable demo data.
+-- The product seed section below deletes existing Product, InventoryBatch,
+-- and related OrderDetail rows before reloading demo products.
+-- For an existing database with data to preserve, use Upgrade_InventoryFeatures.sql.
+-- Run this file in SQL Server Management Studio (SSMS) with permission to create DB.
+-- ============================================================
 -- ============================================================
 -- MedCare Pharmacy - SQL Server Database Schema + Seed Data (Complete & Idempotent)
 -- Bao gồm: schema, users, categories, suppliers, 299 products, inventory batches
@@ -114,6 +138,11 @@ BEGIN
         Address             NVARCHAR(300)   NOT NULL,
         OrderType           VARCHAR(50)     NOT NULL CONSTRAINT DF_Order_OrderType DEFAULT ('Online'),
         Status              VARCHAR(50)     NOT NULL CONSTRAINT DF_Order_Status DEFAULT ('Pending'),
+        PaymentMethod       VARCHAR(30)     NOT NULL CONSTRAINT DF_Order_PaymentMethod DEFAULT ('COD'),
+        PaymentStatus       VARCHAR(20)     NOT NULL CONSTRAINT DF_Order_PaymentStatus DEFAULT ('Unpaid'),
+        AmountReceived      DECIMAL(18,2)   NULL,
+        ChangeAmount        DECIMAL(18,2)   NOT NULL CONSTRAINT DF_Order_ChangeAmount DEFAULT (0),
+        PaidAt              DATETIME2       NULL,
         PrescriptionUrl     NVARCHAR(MAX)   NULL,
         TotalAmount         DECIMAL(18,2)   NOT NULL,
         CreatedAt           DATETIME2       NOT NULL CONSTRAINT DF_Order_CreatedAt DEFAULT (GETDATE()),
@@ -121,6 +150,31 @@ BEGIN
         CONSTRAINT FK_Order_User FOREIGN KEY (UserId) REFERENCES [User](Id) ON DELETE SET NULL
     );
 END
+GO
+
+-- Payment details for databases created before payment tracking was introduced.
+IF COL_LENGTH(N'dbo.Order', N'PaymentMethod') IS NULL
+    ALTER TABLE dbo.[Order] ADD PaymentMethod VARCHAR(30) NOT NULL CONSTRAINT DF_Order_PaymentMethod DEFAULT ('COD') WITH VALUES;
+IF COL_LENGTH(N'dbo.Order', N'PaymentStatus') IS NULL
+    ALTER TABLE dbo.[Order] ADD PaymentStatus VARCHAR(20) NOT NULL CONSTRAINT DF_Order_PaymentStatus DEFAULT ('Unpaid') WITH VALUES;
+IF COL_LENGTH(N'dbo.Order', N'AmountReceived') IS NULL
+    ALTER TABLE dbo.[Order] ADD AmountReceived DECIMAL(18,2) NULL;
+IF COL_LENGTH(N'dbo.Order', N'ChangeAmount') IS NULL
+    ALTER TABLE dbo.[Order] ADD ChangeAmount DECIMAL(18,2) NOT NULL CONSTRAINT DF_Order_ChangeAmount DEFAULT (0) WITH VALUES;
+IF COL_LENGTH(N'dbo.Order', N'PaidAt') IS NULL
+    ALTER TABLE dbo.[Order] ADD PaidAt DATETIME2 NULL;
+GO
+
+-- Existing POS bills were created only after a successful checkout; preserve them as paid.
+UPDATE dbo.[Order]
+SET PaymentStatus = 'Paid', PaymentMethod = 'Cash', AmountReceived = TotalAmount,
+    ChangeAmount = 0, PaidAt = COALESCE(PaidAt, CreatedAt)
+WHERE OrderType = 'POS' AND Status <> 'Cancelled' AND PaymentStatus = 'Unpaid';
+
+UPDATE dbo.[Order]
+SET PaymentStatus = 'Paid', AmountReceived = TotalAmount, ChangeAmount = 0,
+    PaidAt = COALESCE(PaidAt, CreatedAt)
+WHERE OrderType = 'Online' AND Status = 'Completed' AND PaymentMethod = 'COD' AND PaymentStatus = 'Unpaid';
 GO
 
 IF OBJECT_ID(N'[dbo].[OrderDetail]', N'U') IS NULL
@@ -182,6 +236,77 @@ BEGIN
 END
 GO
 
+-- Purchase receipts and inventory movement ledger (safe to re-run on existing databases).
+IF OBJECT_ID(N'[dbo].[PurchaseReceipt]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[PurchaseReceipt] (
+        Id                  INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_PurchaseReceipt PRIMARY KEY,
+        ReceiptNumber       VARCHAR(20) NOT NULL,
+        SupplierId          INT NOT NULL,
+        CreatedByUserId     INT NULL,
+        Note                NVARCHAR(500) NULL,
+        TotalAmount         DECIMAL(18,2) NOT NULL,
+        CreatedAt           DATETIME2 NOT NULL CONSTRAINT DF_PurchaseReceipt_CreatedAt DEFAULT (SYSUTCDATETIME()),
+        CONSTRAINT UQ_PurchaseReceipt_ReceiptNumber UNIQUE (ReceiptNumber),
+        CONSTRAINT FK_PurchaseReceipt_Supplier FOREIGN KEY (SupplierId) REFERENCES [dbo].[Supplier](Id) ON DELETE NO ACTION,
+        CONSTRAINT FK_PurchaseReceipt_User FOREIGN KEY (CreatedByUserId) REFERENCES [dbo].[User](Id) ON DELETE SET NULL
+    );
+END
+GO
+
+IF OBJECT_ID(N'[dbo].[PurchaseReceiptLine]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[PurchaseReceiptLine] (
+        Id                  INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_PurchaseReceiptLine PRIMARY KEY,
+        PurchaseReceiptId   INT NOT NULL,
+        ProductId           INT NOT NULL,
+        InventoryBatchId    INT NOT NULL,
+        Quantity            INT NOT NULL,
+        UnitCost            DECIMAL(18,2) NOT NULL,
+        LineTotal           DECIMAL(18,2) NOT NULL,
+        CONSTRAINT FK_PurchaseReceiptLine_Receipt FOREIGN KEY (PurchaseReceiptId) REFERENCES [dbo].[PurchaseReceipt](Id) ON DELETE CASCADE,
+        CONSTRAINT FK_PurchaseReceiptLine_Product FOREIGN KEY (ProductId) REFERENCES [dbo].[Product](Id) ON DELETE NO ACTION,
+        CONSTRAINT FK_PurchaseReceiptLine_Batch FOREIGN KEY (InventoryBatchId) REFERENCES [dbo].[InventoryBatch](Id) ON DELETE NO ACTION,
+        CONSTRAINT CK_PurchaseReceiptLine_Values CHECK (Quantity > 0 AND UnitCost > 0 AND LineTotal >= 0)
+    );
+END
+GO
+
+IF OBJECT_ID(N'[dbo].[InventoryMovement]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[InventoryMovement] (
+        Id                  INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_InventoryMovement PRIMARY KEY,
+        ProductId           INT NOT NULL,
+        InventoryBatchId    INT NULL,
+        PurchaseReceiptId   INT NULL,
+        OrderId             INT NULL,
+        PerformedByUserId   INT NULL,
+        MovementType        VARCHAR(30) NOT NULL,
+        Quantity            INT NOT NULL,
+        StockBefore         INT NOT NULL,
+        StockAfter          INT NOT NULL,
+        Note                NVARCHAR(500) NULL,
+        CreatedAt           DATETIME2 NOT NULL CONSTRAINT DF_InventoryMovement_CreatedAt DEFAULT (SYSUTCDATETIME()),
+        CONSTRAINT FK_InventoryMovement_Product FOREIGN KEY (ProductId) REFERENCES [dbo].[Product](Id) ON DELETE NO ACTION,
+        CONSTRAINT FK_InventoryMovement_Batch FOREIGN KEY (InventoryBatchId) REFERENCES [dbo].[InventoryBatch](Id) ON DELETE SET NULL,
+        CONSTRAINT FK_InventoryMovement_Receipt FOREIGN KEY (PurchaseReceiptId) REFERENCES [dbo].[PurchaseReceipt](Id) ON DELETE SET NULL,
+        CONSTRAINT FK_InventoryMovement_Order FOREIGN KEY (OrderId) REFERENCES [dbo].[Order](Id) ON DELETE SET NULL,
+        CONSTRAINT FK_InventoryMovement_User FOREIGN KEY (PerformedByUserId) REFERENCES [dbo].[User](Id) ON DELETE SET NULL,
+        CONSTRAINT CK_InventoryMovement_Stock CHECK (StockBefore >= 0 AND StockAfter >= 0)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_PurchaseReceipt_CreatedAt' AND object_id = OBJECT_ID(N'dbo.PurchaseReceipt', N'U'))
+    CREATE INDEX IX_PurchaseReceipt_CreatedAt ON dbo.PurchaseReceipt(CreatedAt DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_PurchaseReceiptLine_ReceiptId' AND object_id = OBJECT_ID(N'dbo.PurchaseReceiptLine', N'U'))
+    CREATE INDEX IX_PurchaseReceiptLine_ReceiptId ON dbo.PurchaseReceiptLine(PurchaseReceiptId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_InventoryMovement_CreatedAt' AND object_id = OBJECT_ID(N'dbo.InventoryMovement', N'U'))
+    CREATE INDEX IX_InventoryMovement_CreatedAt ON dbo.InventoryMovement(CreatedAt DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_InventoryMovement_ProductId' AND object_id = OBJECT_ID(N'dbo.InventoryMovement', N'U'))
+    CREATE INDEX IX_InventoryMovement_ProductId ON dbo.InventoryMovement(ProductId, CreatedAt DESC);
+GO
+
 -- Indexes
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Product_CategoryId' AND object_id = OBJECT_ID(N'dbo.Product', N'U'))
     CREATE INDEX IX_Product_CategoryId ON dbo.Product(CategoryId);
@@ -193,6 +318,8 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Order_UserId' AND obj
     CREATE INDEX IX_Order_UserId ON dbo.[Order](UserId);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Order_Status' AND object_id = OBJECT_ID(N'dbo.[Order]', N'U'))
     CREATE INDEX IX_Order_Status ON dbo.[Order](Status);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Order_PaymentStatus_CreatedAt' AND object_id = OBJECT_ID(N'dbo.[Order]', N'U'))
+    CREATE INDEX IX_Order_PaymentStatus_CreatedAt ON dbo.[Order](PaymentStatus, CreatedAt DESC);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_OrderDetail_OrderId' AND object_id = OBJECT_ID(N'dbo.OrderDetail', N'U'))
     CREATE INDEX IX_OrderDetail_OrderId ON dbo.OrderDetail(OrderId);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_OrderDetail_ProductId' AND object_id = OBJECT_ID(N'dbo.OrderDetail', N'U'))
@@ -633,8 +760,9 @@ GO
 -- Domain constraints protect the database even when a request bypasses the UI.
 IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_Product_Stock_Price')
     ALTER TABLE [dbo].[Product] WITH CHECK ADD CONSTRAINT CK_Product_Stock_Price CHECK (StockQuantity >= 0 AND Price >= 0);
-IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_InventoryBatch_Values')
-    ALTER TABLE [dbo].[InventoryBatch] WITH CHECK ADD CONSTRAINT CK_InventoryBatch_Values CHECK (Quantity > 0 AND ImportPrice >= 0 AND MfgDate < ExpDate);
+IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_InventoryBatch_Values' AND parent_object_id = OBJECT_ID(N'dbo.InventoryBatch', N'U'))
+    ALTER TABLE [dbo].[InventoryBatch] DROP CONSTRAINT CK_InventoryBatch_Values;
+ALTER TABLE [dbo].[InventoryBatch] WITH CHECK ADD CONSTRAINT CK_InventoryBatch_Values CHECK (Quantity >= 0 AND ImportPrice >= 0 AND MfgDate < ExpDate);
 IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_OrderDetail_Values')
     ALTER TABLE [dbo].[OrderDetail] WITH CHECK ADD CONSTRAINT CK_OrderDetail_Values CHECK (Quantity > 0 AND UnitPrice >= 0);
 IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_Order_Values')
@@ -658,4 +786,137 @@ SELECT TOP 10 Id, Name, Price, StockQuantity, Unit, CategoryId, SupplierId,
 FROM [Product] ORDER BY Id;
 
 PRINT N'Tạo tài khoản admin đầu tiên qua POST /api/auth/bootstrap-admin.';
+GO
+
+
+-- ==================== STOCK RECONCILIATION CHECK ====================
+-- Any results here need manual stock reconciliation before new sales can be processed.
+SELECT p.Id AS ProductId, p.Name, p.StockQuantity AS ProductStock,
+       COALESCE(SUM(b.Quantity), 0) AS BatchStock
+FROM dbo.Product AS p
+LEFT JOIN dbo.InventoryBatch AS b ON b.ProductId = p.Id
+GROUP BY p.Id, p.Name, p.StockQuantity
+HAVING p.StockQuantity <> COALESCE(SUM(b.Quantity), 0)
+ORDER BY p.Name;
+GO
+
+
+-- =====================================================================
+-- BEGIN EXISTING DATABASE UPGRADE SECTION
+-- Chi chay phan nay neu can giu du lieu hien co.
+-- =====================================================================
+-- Run this script against MedCarePharmacyDB to add purchase receipt and inventory history tables.
+-- Safe to run more than once. It does not delete or reseed existing application data.
+USE MedCarePharmacyDB;
+GO
+
+-- An exhausted batch remains in history with quantity zero.
+IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_InventoryBatch_Values' AND parent_object_id = OBJECT_ID(N'dbo.InventoryBatch', N'U'))
+    ALTER TABLE dbo.InventoryBatch DROP CONSTRAINT CK_InventoryBatch_Values;
+ALTER TABLE dbo.InventoryBatch WITH CHECK ADD CONSTRAINT CK_InventoryBatch_Values
+    CHECK (Quantity >= 0 AND ImportPrice >= 0 AND MfgDate < ExpDate);
+GO
+
+IF COL_LENGTH(N'dbo.Order', N'PaymentMethod') IS NULL
+    ALTER TABLE dbo.[Order] ADD PaymentMethod VARCHAR(30) NOT NULL CONSTRAINT DF_Order_PaymentMethod DEFAULT ('COD') WITH VALUES;
+IF COL_LENGTH(N'dbo.Order', N'PaymentStatus') IS NULL
+    ALTER TABLE dbo.[Order] ADD PaymentStatus VARCHAR(20) NOT NULL CONSTRAINT DF_Order_PaymentStatus DEFAULT ('Unpaid') WITH VALUES;
+IF COL_LENGTH(N'dbo.Order', N'AmountReceived') IS NULL
+    ALTER TABLE dbo.[Order] ADD AmountReceived DECIMAL(18,2) NULL;
+IF COL_LENGTH(N'dbo.Order', N'ChangeAmount') IS NULL
+    ALTER TABLE dbo.[Order] ADD ChangeAmount DECIMAL(18,2) NOT NULL CONSTRAINT DF_Order_ChangeAmount DEFAULT (0) WITH VALUES;
+IF COL_LENGTH(N'dbo.Order', N'PaidAt') IS NULL
+    ALTER TABLE dbo.[Order] ADD PaidAt DATETIME2 NULL;
+GO
+
+UPDATE dbo.[Order]
+SET PaymentStatus = 'Paid', PaymentMethod = 'Cash', AmountReceived = TotalAmount,
+    ChangeAmount = 0, PaidAt = COALESCE(PaidAt, CreatedAt)
+WHERE OrderType = 'POS' AND Status <> 'Cancelled' AND PaymentStatus = 'Unpaid';
+UPDATE dbo.[Order]
+SET PaymentStatus = 'Paid', AmountReceived = TotalAmount, ChangeAmount = 0,
+    PaidAt = COALESCE(PaidAt, CreatedAt)
+WHERE OrderType = 'Online' AND Status = 'Completed' AND PaymentMethod = 'COD' AND PaymentStatus = 'Unpaid';
+GO
+
+IF OBJECT_ID(N'[dbo].[PurchaseReceipt]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[PurchaseReceipt] (
+        Id INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_PurchaseReceipt PRIMARY KEY,
+        ReceiptNumber VARCHAR(20) NOT NULL,
+        SupplierId INT NOT NULL,
+        CreatedByUserId INT NULL,
+        Note NVARCHAR(500) NULL,
+        TotalAmount DECIMAL(18,2) NOT NULL,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_PurchaseReceipt_CreatedAt DEFAULT (SYSUTCDATETIME()),
+        CONSTRAINT UQ_PurchaseReceipt_ReceiptNumber UNIQUE (ReceiptNumber),
+        CONSTRAINT FK_PurchaseReceipt_Supplier FOREIGN KEY (SupplierId) REFERENCES [dbo].[Supplier](Id) ON DELETE NO ACTION,
+        CONSTRAINT FK_PurchaseReceipt_User FOREIGN KEY (CreatedByUserId) REFERENCES [dbo].[User](Id) ON DELETE SET NULL
+    );
+END
+GO
+
+IF OBJECT_ID(N'[dbo].[PurchaseReceiptLine]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[PurchaseReceiptLine] (
+        Id INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_PurchaseReceiptLine PRIMARY KEY,
+        PurchaseReceiptId INT NOT NULL,
+        ProductId INT NOT NULL,
+        InventoryBatchId INT NOT NULL,
+        Quantity INT NOT NULL,
+        UnitCost DECIMAL(18,2) NOT NULL,
+        LineTotal DECIMAL(18,2) NOT NULL,
+        CONSTRAINT FK_PurchaseReceiptLine_Receipt FOREIGN KEY (PurchaseReceiptId) REFERENCES [dbo].[PurchaseReceipt](Id) ON DELETE CASCADE,
+        CONSTRAINT FK_PurchaseReceiptLine_Product FOREIGN KEY (ProductId) REFERENCES [dbo].[Product](Id) ON DELETE NO ACTION,
+        CONSTRAINT FK_PurchaseReceiptLine_Batch FOREIGN KEY (InventoryBatchId) REFERENCES [dbo].[InventoryBatch](Id) ON DELETE NO ACTION,
+        CONSTRAINT CK_PurchaseReceiptLine_Values CHECK (Quantity > 0 AND UnitCost > 0 AND LineTotal >= 0)
+    );
+END
+GO
+
+IF OBJECT_ID(N'[dbo].[InventoryMovement]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[InventoryMovement] (
+        Id INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_InventoryMovement PRIMARY KEY,
+        ProductId INT NOT NULL,
+        InventoryBatchId INT NULL,
+        PurchaseReceiptId INT NULL,
+        OrderId INT NULL,
+        PerformedByUserId INT NULL,
+        MovementType VARCHAR(30) NOT NULL,
+        Quantity INT NOT NULL,
+        StockBefore INT NOT NULL,
+        StockAfter INT NOT NULL,
+        Note NVARCHAR(500) NULL,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_InventoryMovement_CreatedAt DEFAULT (SYSUTCDATETIME()),
+        CONSTRAINT FK_InventoryMovement_Product FOREIGN KEY (ProductId) REFERENCES [dbo].[Product](Id) ON DELETE NO ACTION,
+        CONSTRAINT FK_InventoryMovement_Batch FOREIGN KEY (InventoryBatchId) REFERENCES [dbo].[InventoryBatch](Id) ON DELETE SET NULL,
+        CONSTRAINT FK_InventoryMovement_Receipt FOREIGN KEY (PurchaseReceiptId) REFERENCES [dbo].[PurchaseReceipt](Id) ON DELETE SET NULL,
+        CONSTRAINT FK_InventoryMovement_Order FOREIGN KEY (OrderId) REFERENCES [dbo].[Order](Id) ON DELETE SET NULL,
+        CONSTRAINT FK_InventoryMovement_User FOREIGN KEY (PerformedByUserId) REFERENCES [dbo].[User](Id) ON DELETE SET NULL,
+        CONSTRAINT CK_InventoryMovement_Stock CHECK (StockBefore >= 0 AND StockAfter >= 0)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_PurchaseReceipt_CreatedAt' AND object_id = OBJECT_ID(N'dbo.PurchaseReceipt', N'U'))
+    CREATE INDEX IX_PurchaseReceipt_CreatedAt ON dbo.PurchaseReceipt(CreatedAt DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_PurchaseReceiptLine_ReceiptId' AND object_id = OBJECT_ID(N'dbo.PurchaseReceiptLine', N'U'))
+    CREATE INDEX IX_PurchaseReceiptLine_ReceiptId ON dbo.PurchaseReceiptLine(PurchaseReceiptId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_InventoryMovement_CreatedAt' AND object_id = OBJECT_ID(N'dbo.InventoryMovement', N'U'))
+    CREATE INDEX IX_InventoryMovement_CreatedAt ON dbo.InventoryMovement(CreatedAt DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_InventoryMovement_ProductId' AND object_id = OBJECT_ID(N'dbo.InventoryMovement', N'U'))
+    CREATE INDEX IX_InventoryMovement_ProductId ON dbo.InventoryMovement(ProductId, CreatedAt DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Order_PaymentStatus_CreatedAt' AND object_id = OBJECT_ID(N'dbo.Order', N'U'))
+    CREATE INDEX IX_Order_PaymentStatus_CreatedAt ON dbo.[Order](PaymentStatus, CreatedAt DESC);
+GO
+
+-- Any results here need manual stock reconciliation before new sales can be processed.
+SELECT p.Id AS ProductId, p.Name, p.StockQuantity AS ProductStock,
+       COALESCE(SUM(b.Quantity), 0) AS BatchStock
+FROM dbo.Product AS p
+LEFT JOIN dbo.InventoryBatch AS b ON b.ProductId = p.Id
+GROUP BY p.Id, p.Name, p.StockQuantity
+HAVING p.StockQuantity <> COALESCE(SUM(b.Quantity), 0)
+ORDER BY p.Name;
 GO

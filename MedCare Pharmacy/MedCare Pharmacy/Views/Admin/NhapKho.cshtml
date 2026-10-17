@@ -52,10 +52,21 @@
 
             <div class="panel">
                 <div class="panel-title">
-                    <span>Thông tin lô thuốc</span>
+                    <span>Thông tin phiếu nhập</span>
                 </div>
 
                 <div class="form-grid">
+                    <div class="form-field">
+                        <label>Nhà cung cấp</label>
+                        <select id="poSupplier"><option value="">-- Chọn nhà cung cấp --</option></select>
+                    </div>
+                    <div class="form-field">
+                        <label>Ghi chú</label>
+                        <input id="poNote" maxlength="500" placeholder="Số hóa đơn, ghi chú giao nhận...">
+                    </div>
+                    <div class="form-field full" style="border-top:1px solid #e5e7eb;padding-top:16px">
+                        <label>Thêm thuốc vào phiếu</label>
+                    </div>
                     <div class="form-field full">
                         <label>Thuốc</label>
                         <select id="poMed">
@@ -92,6 +103,26 @@
                         <label>&nbsp;</label>
                         <button class="btn" id="btnAddPoLine" type="button">+ Thêm vào phiếu</button>
                     </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-title"><span>Phiếu nhập gần đây</span></div>
+                <div class="table-wrap">
+                    <table class="tbl">
+                        <thead><tr><th>Mã phiếu</th><th>Nhà cung cấp</th><th>Số dòng</th><th>Tổng số lượng</th><th>Tổng tiền</th><th>Thời gian</th></tr></thead>
+                        <tbody id="receiptHistoryBody"><tr><td colspan="6" class="empty">Đang tải...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-title"><span>Lịch sử biến động kho</span></div>
+                <div class="table-wrap">
+                    <table class="tbl">
+                        <thead><tr><th>Thời gian</th><th>Sản phẩm</th><th>Loại biến động</th><th>Số lượng</th><th>Tồn trước</th><th>Tồn sau</th><th>Lô / tham chiếu</th><th>Người thực hiện</th></tr></thead>
+                        <tbody id="movementHistoryBody"><tr><td colspan="8" class="empty">Đang tải...</td></tr></tbody>
+                    </table>
                 </div>
             </div>
 

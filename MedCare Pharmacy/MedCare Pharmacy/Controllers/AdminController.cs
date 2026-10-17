@@ -1,7 +1,10 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 
+using Microsoft.AspNetCore.Authorization;
+
 namespace MedCare_Pharmacy.Controllers
 {
+    [Authorize(AuthenticationSchemes = "PageCookie", Roles = "admin")]
     public class AdminController : Controller
     {
         // GET: /Admin hoặc /Admin/Index (Ánh xạ từ admin/index.html)

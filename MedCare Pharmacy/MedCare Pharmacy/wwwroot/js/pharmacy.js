@@ -5,6 +5,7 @@
 /* ---------- POS (đã chuyển sang API Products + Orders/pos) ---------- */
 let posInvoice = [];
 let posProductsCache = [];   // danh sách thuốc từ API
+let posLastReceipt = null;
 
 function initPosPage() {
     const gridEl = document.getElementById("posGrid");
@@ -20,6 +21,16 @@ function initPosPage() {
     });
 
     document.getElementById("btnCheckout").onclick = doPosCheckout;
+    document.getElementById("btnPrintReceipt").onclick = printPosReceipt;
+    const paymentMethod = document.getElementById("posPaymentMethod");
+    if (paymentMethod) paymentMethod.addEventListener("change", () => {
+        const confirmation = document.getElementById("posNonCashConfirmed");
+        if (confirmation) confirmation.checked = false;
+        syncPosPaymentFields();
+    });
+    const receivedInput = document.getElementById("posAmountReceived");
+    if (receivedInput) receivedInput.addEventListener("input", () => syncPosPaymentFields());
+    syncPosPaymentFields();
     document.getElementById("btnClearInvoice").onclick = () => {
         if (!posInvoice.length) return;
         if (confirm("Xóa toàn bộ hóa đơn?")) {
@@ -143,6 +154,23 @@ function renderInvoice() {
             <div class="row grand"><span>Khách phải trả</span><span>${formatPrice(total)}</span></div>
         `;
     }
+    syncPosPaymentFields(total);
+}
+
+function syncPosPaymentFields(total) {
+    const method = document.getElementById("posPaymentMethod")?.value || "Cash";
+    const cashFields = document.getElementById("posCashFields");
+    const nonCashConfirm = document.getElementById("posNonCashConfirmWrap");
+    if (cashFields) cashFields.style.display = method === "Cash" ? "" : "none";
+    if (nonCashConfirm) nonCashConfirm.style.display = method === "Cash" ? "none" : "block";
+    const subtotal = posInvoice.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const amountDue = total ?? subtotal + Math.round(subtotal * 0.05);
+    const received = Number(document.getElementById("posAmountReceived")?.value || 0);
+    const change = Math.max(0, received - amountDue);
+    const changeEl = document.getElementById("posChangeAmount");
+    if (changeEl) changeEl.textContent = received >= amountDue && amountDue > 0
+        ? `Tiền thừa: ${formatPrice(change)}`
+        : `Còn thiếu: ${formatPrice(Math.max(0, amountDue - received))}`;
 }
 
 window.posQty = (id, v) => {
@@ -170,11 +198,29 @@ async function doPosCheckout() {
 
     const subtotal = posInvoice.reduce((s, i) => s + i.price * i.quantity, 0);
     const total = subtotal + Math.round(subtotal * 0.05);
+    const paymentMethod = document.getElementById("posPaymentMethod")?.value || "Cash";
+    const amountReceived = paymentMethod === "Cash"
+        ? Number(document.getElementById("posAmountReceived")?.value || 0)
+        : total;
+    const nonCashPaymentConfirmed = paymentMethod === "Cash"
+        ? false
+        : Boolean(document.getElementById("posNonCashConfirmed")?.checked);
+    if (paymentMethod === "Cash" && amountReceived < total) {
+        showToast("Tiền khách đưa chưa đủ thanh toán", "error");
+        return;
+    }
+    if (paymentMethod !== "Cash" && !nonCashPaymentConfirmed) {
+        showToast("Hãy xác nhận đã nhận thanh toán trước khi hoàn tất hóa đơn", "error");
+        return;
+    }
 
     // Server lấy giá sản phẩm và tính tổng; client chỉ gửi mã hàng/số lượng.
     const body = {
         customerName: "Khách vãng lai",
         phone: "",
+        paymentMethod,
+        amountReceived,
+        nonCashPaymentConfirmed,
         items: posInvoice.map(i => ({
             productId: i.id,
             quantity: i.quantity
@@ -184,17 +230,57 @@ async function doPosCheckout() {
     try {
         // POST api/orders/pos  → backend tự trừ StockQuantity
         const result = await apiPost(`${API.ORDERS}/pos`, body);
-        showToast(result && result.message
-            ? result.message
-            : `Thanh toán thành công ${formatPrice(total)}`);
+        const paidTotal = result?.totalAmount ?? total;
+        posLastReceipt = {
+            orderId: result?.orderId,
+            items: posInvoice.map(item => ({ ...item })),
+            subtotal,
+            tax: paidTotal - subtotal,
+            total: paidTotal,
+            paymentMethod,
+            amountReceived: result?.amountReceived ?? amountReceived,
+            changeAmount: result?.changeAmount ?? Math.max(0, amountReceived - paidTotal),
+            paidAt: new Date()
+        };
+        const printButton = document.getElementById("btnPrintReceipt");
+        if (printButton) printButton.style.display = "block";
+        showToast(result?.orderId
+            ? `Thanh toán thành công hóa đơn #${result.orderId} — ${formatPrice(paidTotal)}${result.changeAmount > 0 ? ` · Tiền thừa ${formatPrice(result.changeAmount)}` : ""}`
+            : (result?.message || `Thanh toán thành công ${formatPrice(paidTotal)}`));
 
         posInvoice = [];
+        document.getElementById("posAmountReceived").value = "";
+        document.getElementById("posNonCashConfirmed").checked = false;
+        document.getElementById("posPaymentMethod").value = "Cash";
         renderInvoice();
         // Tải lại tồn kho mới từ API
         await loadPosProducts();
     } catch (err) {
         showToast(err.message || "Lỗi thanh toán POS", "error");
     }
+}
+
+function printPosReceipt() {
+    if (!posLastReceipt) return;
+    const receipt = posLastReceipt;
+    const printWindow = window.open("", "_blank", "width=420,height=720");
+    if (!printWindow) {
+        showToast("Trình duyệt đang chặn cửa sổ in. Hãy cho phép cửa sổ bật lên rồi thử lại.", "error");
+        return;
+    }
+    const methodLabels = { Cash: "Tiền mặt", BankTransfer: "Chuyển khoản", Card: "Thẻ ngân hàng" };
+    const rows = receipt.items.map(item => `
+        <tr><td>${escapeHtml(item.name)}<br><small>${item.quantity} × ${formatPrice(item.price)}</small></td>
+            <td class="amount">${formatPrice(item.quantity * item.price)}</td></tr>`).join("");
+    printWindow.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Hóa đơn #${receipt.orderId || "POS"}</title>
+        <style>body{font:14px Arial,sans-serif;width:340px;margin:24px auto;color:#111}h1,p{text-align:center;margin:6px 0}h1{font-size:20px}.meta{margin:18px 0;border-top:1px dashed #777;border-bottom:1px dashed #777;padding:8px 0}table{width:100%;border-collapse:collapse}td{padding:7px 0;vertical-align:top}.amount{text-align:right;white-space:nowrap}.totals{margin-top:12px;border-top:1px dashed #777;padding-top:10px}.line{display:flex;justify-content:space-between;margin:6px 0}.grand{font-size:17px;font-weight:bold}.thanks{margin-top:20px}@media print{body{margin:0 auto}}</style></head><body>
+        <h1>MedCare Pharmacy</h1><p>HÓA ĐƠN BÁN LẺ</p><div class="meta"><div>Mã hóa đơn: #${receipt.orderId || "—"}</div>
+        <div>Thời gian: ${receipt.paidAt.toLocaleString("vi-VN")}</div><div>Thanh toán: ${methodLabels[receipt.paymentMethod] || escapeHtml(receipt.paymentMethod)}</div></div>
+        <table>${rows}</table><div class="totals"><div class="line"><span>Tạm tính</span><span>${formatPrice(receipt.subtotal)}</span></div>
+        <div class="line"><span>Thuế (5%)</span><span>${formatPrice(receipt.tax)}</span></div><div class="line grand"><span>Tổng thanh toán</span><span>${formatPrice(receipt.total)}</span></div>
+        <div class="line"><span>Khách đưa</span><span>${formatPrice(receipt.amountReceived)}</span></div><div class="line"><span>Tiền thừa</span><span>${formatPrice(receipt.changeAmount)}</span></div></div>
+        <p class="thanks">Cảm ơn quý khách!</p><script>window.onload=()=>window.print();<\/script></body></html>`);
+    printWindow.document.close();
 }
 
 /* ---------- Online Orders (đã chuyển sang API OrdersController) ---------- */

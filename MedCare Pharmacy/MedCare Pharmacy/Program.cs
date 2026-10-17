@@ -1,8 +1,11 @@
 using MedCare_Pharmacy.Models.Data;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Threading.RateLimiting;
 using System.Text;
 
@@ -25,10 +28,15 @@ builder.Services.AddCors(options =>
 });
 
 // 3. JWT Authentication
-var jwtKey = builder.Configuration["Jwt:Key"]!;
-if (string.IsNullOrWhiteSpace(jwtKey) || Encoding.UTF8.GetByteCount(jwtKey) < 32)
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtKey))
 {
-    throw new InvalidOperationException("Cấu hình Jwt:Key chưa an toàn. Hãy cung cấp khóa bí mật ít nhất 32 byte qua User Secrets hoặc biến môi trường Jwt__Key.");
+    jwtKey = LoadOrCreateJwtKey();
+    Console.WriteLine("JWT signing key loaded from the local application data directory.");
+}
+if (Encoding.UTF8.GetByteCount(jwtKey) < 32)
+{
+    throw new InvalidOperationException("Jwt:Key phải có ít nhất 32 byte. Hãy cung cấp khóa an toàn qua User Secrets hoặc biến môi trường Jwt__Key.");
 }
 builder.Services.AddAuthentication(options =>
 {
@@ -67,6 +75,39 @@ builder.Services.AddAuthentication(options =>
             if (account == null || !string.Equals(account.Status, "Active", StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(account.Role, role, StringComparison.OrdinalIgnoreCase))
                 context.Fail("Account is inactive or its permissions have changed.");
+        }
+    };
+});
+
+// Server-rendered staff pages use an HttpOnly cookie; APIs continue to use JWT bearer tokens.
+builder.Services.AddAuthentication().AddCookie("PageCookie", options =>
+{
+    options.Cookie.Name = "medcare_page_auth";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.LoginPath = "/Customer/Login";
+    options.AccessDeniedPath = "/Home/Index";
+    options.SlidingExpiration = false;
+    options.Events.OnValidatePrincipal = async context =>
+    {
+        var id = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+        var role = context.Principal?.FindFirstValue(ClaimTypes.Role);
+        if (!int.TryParse(id, out var userId) || string.IsNullOrWhiteSpace(role))
+        {
+            context.RejectPrincipal();
+            await context.HttpContext.SignOutAsync("PageCookie");
+            return;
+        }
+
+        var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+        var account = await db.Users.AsNoTracking().Where(u => u.Id == userId)
+            .Select(u => new { u.Role, u.Status }).SingleOrDefaultAsync();
+        if (account == null || !string.Equals(account.Status, "Active", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(account.Role, role, StringComparison.OrdinalIgnoreCase))
+        {
+            context.RejectPrincipal();
+            await context.HttpContext.SignOutAsync("PageCookie");
         }
     };
 });
@@ -141,3 +182,52 @@ app.MapControllerRoute(
 app.MapControllers();
 
 app.Run();
+
+static string LoadOrCreateJwtKey()
+{
+    var dataDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "MedCarePharmacy");
+    Directory.CreateDirectory(dataDirectory);
+
+    if (!OperatingSystem.IsWindows())
+        File.SetUnixFileMode(dataDirectory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+    var keyPath = Path.Combine(dataDirectory, "jwt-signing-key.txt");
+    if (File.Exists(keyPath))
+        return ReadAndValidateKey(keyPath);
+
+    var generatedKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
+    try
+    {
+        using var stream = new FileStream(keyPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        writer.Write(generatedKey);
+    }
+    catch (IOException) when (File.Exists(keyPath))
+    {
+        // Another app instance may have created the key at the same time.
+        return ReadAndValidateKey(keyPath);
+    }
+
+    if (!OperatingSystem.IsWindows())
+        File.SetUnixFileMode(keyPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+
+    return generatedKey;
+}
+
+static string ReadAndValidateKey(string keyPath)
+{
+    var key = File.ReadAllText(keyPath, Encoding.UTF8).Trim();
+    try
+    {
+        if (Convert.FromBase64String(key).Length >= 32)
+            return key;
+    }
+    catch (FormatException)
+    {
+        // Report a clear setup error below rather than silently rotating the key.
+    }
+
+    throw new InvalidOperationException($"JWT key file '{keyPath}' is invalid. Remove or repair it before restarting; replacing it invalidates existing tokens.");
+}

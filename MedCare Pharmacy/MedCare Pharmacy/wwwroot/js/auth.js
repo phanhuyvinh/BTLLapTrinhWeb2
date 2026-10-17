@@ -20,9 +20,12 @@ function logout() {
 }
 
 /* ---------------- Đăng xuất ---------------- */
-function handleLogout(e) {
+async function handleLogout(e) {
     if (e) e.preventDefault();
     if (!confirm("Bạn có chắc muốn đăng xuất?")) return;
+    try {
+        if (typeof apiPost === "function") await apiPost(API.AUTH_LOGOUT, {});
+    } catch (_) { /* Clear local state even if the server session has already expired. */ }
     logout();
     showToast("Đã đăng xuất");
     setTimeout(() => {
