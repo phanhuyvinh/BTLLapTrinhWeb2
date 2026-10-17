@@ -299,28 +299,19 @@ function initCheckoutPage() {
             return;
         }
 
-        // Lấy UserId nếu đã đăng nhập
-        const currentUser = getCurrentUser();
-        const userId = currentUser && currentUser.id ? currentUser.id : null;
-
         // Ghép địa chỉ + thành phố
         const fullAddress = `${data.address}, ${data.city}`;
 
-        // Chuẩn bị Items đúng format CreateOrderDto
+        // Chỉ gửi mã sản phẩm và số lượng; server tự lấy giá và tính tổng.
         const items = cart.map(i => ({
             productId: i.id,
-            quantity: i.quantity,
-            unitPrice: i.price
+            quantity: i.quantity
         }));
 
-        // Body gửi lên API (khớp CreateOrderDto của OrdersController)
         const body = {
-            userId: userId,
             customerName: data.name.trim(),
             phone: data.phone.trim(),
             address: fullAddress,
-            prescriptionUrl: null,          // Tạm thời chưa upload file
-            totalAmount: t.total,
             items: items
         };
 
@@ -349,6 +340,15 @@ async function initOrdersPage() {
         return;
     }
 
+    const role = (currentUser.role || "customer").toLowerCase();
+    if (role !== "customer") {
+        const dashboardUrl = typeof dashboardHrefFor === "function"
+            ? dashboardHrefFor(role)
+            : "/Home/Index";
+        wrap.innerHTML = `<p class="empty">Trang này dành cho khách hàng. Tài khoản ${escapeHtml(role)} có thể vào <a href="${dashboardUrl}">bảng điều khiển</a>.</p>`;
+        return;
+    }
+
     wrap.innerHTML = `<p class="empty">Đang tải đơn hàng...</p>`;
 
     // Ánh xạ status backend → tiếng Việt + badge
@@ -361,7 +361,7 @@ async function initOrdersPage() {
 
     try {
         // Gọi API mới: GET /api/orders/by-user?userId=...
-        const orders = await apiGet(`${API.ORDERS}/by-user?userId=${currentUser.id}`);
+        const orders = await apiGet(`${API.ORDERS}/by-user`);
 
         if (!orders || !orders.length) {
             wrap.innerHTML = `<p class="empty">Bạn chưa có đơn hàng nào. <a href="/Customer/Products">Mua sắm ngay</a></p>`;
@@ -392,6 +392,10 @@ async function initOrdersPage() {
             </div>`;
         }).join("");
     } catch (err) {
+        if (err.status === 401 || err.status === 403) {
+            wrap.innerHTML = `<p class="empty">Phiên đăng nhập không còn phù hợp với quyền tài khoản. Vui lòng <a href="/Customer/Login">đăng nhập lại</a> bằng tài khoản khách hàng.</p>`;
+            return;
+        }
         wrap.innerHTML = `<p class="empty">Lỗi tải đơn hàng: ${escapeHtml(err.message || "Không xác định")}</p>`;
         showToast(err.message || "Không tải được danh sách đơn hàng", "error");
     }
@@ -430,7 +434,7 @@ function initPrescriptionPage() {
             <div class="rx-item">
                 <div class="preview">${rx.fileType === "pdf" ? "📄" : "🖼️"}</div>
                 <div style="font-weight:600">
-                    <a href="${escapeHtml(rx.fileUrl)}" target="_blank" rel="noopener">
+                    <a href="#" onclick="event.preventDefault();openProtectedFile('${escapeHtml(rx.fileUrl)}')">
                         ${escapeHtml(rx.fileName)}
                     </a>
                 </div>

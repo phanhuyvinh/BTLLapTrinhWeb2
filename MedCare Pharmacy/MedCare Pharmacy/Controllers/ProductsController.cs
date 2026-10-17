@@ -67,6 +67,8 @@ namespace MedCare_Pharmacy.Controllers
         [Authorize(Roles = "admin")]
         public async Task<IActionResult> Create([FromBody] Product product)
         {
+            if (!ValidProduct(product)) return BadRequest(new { message = "Thông tin thuốc hoặc giá bán không hợp lệ." });
+            product.StockQuantity = 0; // Stock can only change through receiving or sales workflows.
             _context.Products.Add(product);
             await _context.SaveChangesAsync();
             return CreatedAtAction(nameof(GetById), new { id = product.Id }, product);
@@ -78,10 +80,22 @@ namespace MedCare_Pharmacy.Controllers
         public async Task<IActionResult> Update(int id, [FromBody] Product product)
         {
             if (id != product.Id) return BadRequest();
+            if (!ValidProduct(product)) return BadRequest(new { message = "Thông tin thuốc hoặc giá bán không hợp lệ." });
+            var current = await _context.Products.FindAsync(id);
+            if (current == null) return NotFound(new { message = "Không tìm thấy thuốc." });
 
-            _context.Entry(product).State = EntityState.Modified;
+            // Do not bind client supplied stock quantity or overwrite unrelated fields.
+            current.Name = product.Name.Trim();
+            current.ActiveIngredient = product.ActiveIngredient?.Trim();
+            current.Price = product.Price;
+            current.Code = product.Code?.Trim() ?? string.Empty;
+            current.Unit = product.Unit.Trim();
+            current.Description = product.Description ?? string.Empty;
+            current.ImageUrl = product.ImageUrl ?? string.Empty;
+            current.CategoryId = product.CategoryId;
+            current.SupplierId = product.SupplierId;
             await _context.SaveChangesAsync();
-            return Ok(product);
+            return Ok(current);
         }
 
         // DELETE: api/products/5
@@ -92,9 +106,21 @@ namespace MedCare_Pharmacy.Controllers
             var product = await _context.Products.FindAsync(id);
             if (product == null) return NotFound();
 
+            var hasHistory = await _context.OrderDetails.AnyAsync(d => d.ProductId == id) ||
+                             await _context.InventoryBatches.AnyAsync(b => b.ProductId == id);
+            if (hasHistory)
+                return Conflict(new { message = "Không thể xóa thuốc đã có giao dịch hoặc lô nhập để bảo toàn lịch sử." });
+
             _context.Products.Remove(product);
             await _context.SaveChangesAsync();
             return Ok(new { message = "Đã xóa sản phẩm thành công" });
         }
+
+        private static bool ValidProduct(Product? product) =>
+            product != null && !string.IsNullOrWhiteSpace(product.Name) && product.Name.Trim().Length <= 200 &&
+            product.Price > 0 && product.Price <= 9999999999999999.99m &&
+            !string.IsNullOrWhiteSpace(product.Unit) && product.Unit.Trim().Length <= 50 &&
+            (product.Code?.Length ?? 0) <= 50 &&
+            (product.ActiveIngredient?.Length ?? 0) <= 200;
     }
 }

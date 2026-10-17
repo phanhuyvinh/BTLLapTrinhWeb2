@@ -43,13 +43,37 @@ async function apiRequest(method, endpoint, body = null, options = {}) {
             const data = await res.json();
             if (data && data.message) msg = data.message;
         } catch (_) { /* ignore */ }
-        throw new Error(msg);
+        const error = new Error(msg);
+        error.status = res.status;
+        throw error;
     }
 
     if (res.status === 204) return null;
     const ct = res.headers.get("content-type") || "";
     if (ct.includes("application/json")) return res.json();
     return res.text();
+}
+
+async function openProtectedFile(endpoint) {
+    const popup = window.open("about:blank", "_blank");
+    if (!popup) {
+        showToast("Cho phép cửa sổ bật lên để xem tệp.", "error");
+        return;
+    }
+    try {
+        const url = new URL(endpoint, window.location.origin);
+        if (url.origin !== window.location.origin) throw new Error("Địa chỉ tệp không hợp lệ.");
+        const response = await fetch(url, {
+            headers: { Authorization: "Bearer " + getAuthToken() }
+        });
+        if (!response.ok) throw new Error("Không thể tải tệp (" + response.status + ").");
+        const objectUrl = URL.createObjectURL(await response.blob());
+        popup.location.href = objectUrl;
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    } catch (error) {
+        popup.close();
+        showToast(error.message || "Không thể mở tệp.", "error");
+    }
 }
 
 /* ---------------- CRUD wrapper ---------------- */

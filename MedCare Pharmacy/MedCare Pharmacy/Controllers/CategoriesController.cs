@@ -1,5 +1,6 @@
 ﻿using MedCare_Pharmacy.Models.Data;
 using MedCare_Pharmacy.Models.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -35,6 +36,7 @@ namespace MedCare_Pharmacy.Controllers
 
         // POST: api/categories
         [HttpPost]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> Create([FromBody] Category category)
         {
             _context.Categories.Add(category);
@@ -44,6 +46,7 @@ namespace MedCare_Pharmacy.Controllers
 
         // PUT: api/categories/5
         [HttpPut("{id}")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> Update(int id, [FromBody] Category category)
         {
             if (id != category.Id) return BadRequest(new { message = "ID không trùng khớp!" });
@@ -56,6 +59,7 @@ namespace MedCare_Pharmacy.Controllers
 
         // DELETE: api/categories/5
         [HttpDelete("{id}")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> Delete(int id)
         {
             var category = await _context.Categories.FindAsync(id);

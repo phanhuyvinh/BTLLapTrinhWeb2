@@ -609,7 +609,7 @@ function initUsersPage() {
                     <input id="uEmail" value="${u ? escapeHtml(u.email || "") : ""}" ${u ? "readonly" : ""}>
                 </div>
                 <div class="form-field"><label>Mật khẩu ${u ? "(để trống = giữ nguyên)" : ""}</label>
-                    <input id="uPassword" type="password" placeholder="${u ? "••••••" : "Mặc định 123456"}">
+                    <input id="uPassword" type="password" placeholder="${u ? "Để trống nếu không đổi" : "Tối thiểu 12 ký tự, gồm chữ và số"}">
                 </div>
                 <div class="form-field"><label>Vai trò</label>
                     <select id="uRole">
@@ -650,7 +650,10 @@ function initUsersPage() {
                 await apiPut(`${API.USERS}/${id}`, body);
                 showToast("Đã cập nhật tài khoản");
             } else {
-                if (!password) body.password = "123456";
+                if (!password) {
+                    showToast("Hãy đặt mật khẩu tối thiểu 12 ký tự gồm chữ và số", "error");
+                    return;
+                }
                 await apiPost(API.USERS, body);
                 showToast("Đã tạo tài khoản");
             }

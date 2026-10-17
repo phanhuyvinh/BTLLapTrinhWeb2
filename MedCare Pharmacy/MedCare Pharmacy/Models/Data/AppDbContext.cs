@@ -53,6 +53,19 @@ namespace MedCare_Pharmacy.Models.Data
                 .Property(d => d.UnitPrice)
                 .HasPrecision(18, 2);
 
+            // Transaction history must survive product maintenance/deletion attempts.
+            modelBuilder.Entity<OrderDetail>()
+                .HasOne(d => d.Product)
+                .WithMany()
+                .HasForeignKey(d => d.ProductId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<InventoryBatch>()
+                .HasOne(b => b.Product)
+                .WithMany()
+                .HasForeignKey(b => b.ProductId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             modelBuilder.Entity<InventoryBatch>()
                 .Property(b => b.ImportPrice)
                 .HasPrecision(18, 2);

@@ -69,6 +69,7 @@ BEGIN
         Name                NVARCHAR(200)   NOT NULL,
         ActiveIngredient    NVARCHAR(200)   NULL,          -- entity: string? → NULL OK
         Price               DECIMAL(18,2)   NOT NULL,
+        Code                NVARCHAR(50)    NOT NULL CONSTRAINT DF_Product_Code DEFAULT (N''),
         StockQuantity       INT             NOT NULL CONSTRAINT DF_Product_StockQuantity DEFAULT (0),
         Unit                NVARCHAR(50)    NOT NULL CONSTRAINT DF_Product_Unit DEFAULT (N'Hộp'),
         [Description]       NVARCHAR(MAX)   NOT NULL CONSTRAINT DF_Product_Description DEFAULT (N''),  -- entity non-nullable
@@ -80,6 +81,10 @@ BEGIN
         CONSTRAINT FK_Product_Supplier FOREIGN KEY (SupplierId) REFERENCES [Supplier](Id) ON DELETE SET NULL
     );
 END
+GO
+
+IF COL_LENGTH(N'dbo.Product', N'Code') IS NULL
+    ALTER TABLE [dbo].[Product] ADD Code NVARCHAR(50) NOT NULL CONSTRAINT DF_Product_Code DEFAULT (N'');
 GO
 
 IF OBJECT_ID(N'[dbo].[InventoryBatch]', N'U') IS NULL
@@ -94,7 +99,7 @@ BEGIN
         ImportPrice     DECIMAL(18,2)   NOT NULL,
         CreatedAt       DATETIME2       NOT NULL CONSTRAINT DF_InventoryBatch_CreatedAt DEFAULT (GETDATE()),
         CONSTRAINT PK_InventoryBatch PRIMARY KEY (Id),
-        CONSTRAINT FK_InventoryBatch_Product FOREIGN KEY (ProductId) REFERENCES [Product](Id) ON DELETE CASCADE
+        CONSTRAINT FK_InventoryBatch_Product FOREIGN KEY (ProductId) REFERENCES [Product](Id) ON DELETE NO ACTION
     );
 END
 GO
@@ -128,9 +133,21 @@ BEGIN
         UnitPrice       DECIMAL(18,2)   NOT NULL,
         CONSTRAINT PK_OrderDetail PRIMARY KEY (Id),
         CONSTRAINT FK_OrderDetail_Order FOREIGN KEY (OrderId) REFERENCES [Order](Id) ON DELETE CASCADE,
-        CONSTRAINT FK_OrderDetail_Product FOREIGN KEY (ProductId) REFERENCES [Product](Id) ON DELETE CASCADE
+        CONSTRAINT FK_OrderDetail_Product FOREIGN KEY (ProductId) REFERENCES [Product](Id) ON DELETE NO ACTION
     );
 END
+GO
+
+-- Keep product transaction and batch history when someone attempts to delete a product.
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_OrderDetail_Product' AND parent_object_id = OBJECT_ID(N'[dbo].[OrderDetail]'))
+    ALTER TABLE [dbo].[OrderDetail] DROP CONSTRAINT FK_OrderDetail_Product;
+ALTER TABLE [dbo].[OrderDetail] WITH CHECK ADD CONSTRAINT FK_OrderDetail_Product
+    FOREIGN KEY (ProductId) REFERENCES [dbo].[Product](Id) ON DELETE NO ACTION;
+
+IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_InventoryBatch_Product' AND parent_object_id = OBJECT_ID(N'[dbo].[InventoryBatch]'))
+    ALTER TABLE [dbo].[InventoryBatch] DROP CONSTRAINT FK_InventoryBatch_Product;
+ALTER TABLE [dbo].[InventoryBatch] WITH CHECK ADD CONSTRAINT FK_InventoryBatch_Product
+    FOREIGN KEY (ProductId) REFERENCES [dbo].[Product](Id) ON DELETE NO ACTION;
 GO
 
 IF OBJECT_ID(N'[dbo].[ChatMessage]', N'U') IS NULL
@@ -166,48 +183,60 @@ END
 GO
 
 -- Indexes
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Product_CategoryId' AND object_id = OBJECT_ID(N'[Product]'))
-    CREATE INDEX IX_Product_CategoryId ON [Product](CategoryId);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Product_SupplierId' AND object_id = OBJECT_ID(N'[Product]'))
-    CREATE INDEX IX_Product_SupplierId ON [Product](SupplierId);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_InventoryBatch_ProductId' AND object_id = OBJECT_ID(N'[InventoryBatch]'))
-    CREATE INDEX IX_InventoryBatch_ProductId ON [InventoryBatch](ProductId);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Order_UserId' AND object_id = OBJECT_ID(N'[Order]'))
-    CREATE INDEX IX_Order_UserId ON [Order](UserId);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Order_Status' AND object_id = OBJECT_ID(N'[Order]'))
-    CREATE INDEX IX_Order_Status ON [Order](Status);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_OrderDetail_OrderId' AND object_id = OBJECT_ID(N'[OrderDetail]'))
-    CREATE INDEX IX_OrderDetail_OrderId ON [OrderDetail](OrderId);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_OrderDetail_ProductId' AND object_id = OBJECT_ID(N'[OrderDetail]'))
-    CREATE INDEX IX_OrderDetail_ProductId ON [OrderDetail](ProductId);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ChatMessage_SenderId' AND object_id = OBJECT_ID(N'[ChatMessage]'))
-    CREATE INDEX IX_ChatMessage_SenderId ON [ChatMessage](SenderId);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ChatMessage_ReceiverId' AND object_id = OBJECT_ID(N'[ChatMessage]'))
-    CREATE INDEX IX_ChatMessage_ReceiverId ON [ChatMessage](ReceiverId);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Prescription_UserId' AND object_id = OBJECT_ID(N'[Prescription]'))
-    CREATE INDEX IX_Prescription_UserId ON [Prescription](UserId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Product_CategoryId' AND object_id = OBJECT_ID(N'dbo.Product', N'U'))
+    CREATE INDEX IX_Product_CategoryId ON dbo.Product(CategoryId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Product_SupplierId' AND object_id = OBJECT_ID(N'dbo.Product', N'U'))
+    CREATE INDEX IX_Product_SupplierId ON dbo.Product(SupplierId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_InventoryBatch_ProductId' AND object_id = OBJECT_ID(N'dbo.InventoryBatch', N'U'))
+    CREATE INDEX IX_InventoryBatch_ProductId ON dbo.InventoryBatch(ProductId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Order_UserId' AND object_id = OBJECT_ID(N'dbo.[Order]', N'U'))
+    CREATE INDEX IX_Order_UserId ON dbo.[Order](UserId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Order_Status' AND object_id = OBJECT_ID(N'dbo.[Order]', N'U'))
+    CREATE INDEX IX_Order_Status ON dbo.[Order](Status);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_OrderDetail_OrderId' AND object_id = OBJECT_ID(N'dbo.OrderDetail', N'U'))
+    CREATE INDEX IX_OrderDetail_OrderId ON dbo.OrderDetail(OrderId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_OrderDetail_ProductId' AND object_id = OBJECT_ID(N'dbo.OrderDetail', N'U'))
+    CREATE INDEX IX_OrderDetail_ProductId ON dbo.OrderDetail(ProductId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ChatMessage_SenderId' AND object_id = OBJECT_ID(N'dbo.ChatMessage', N'U'))
+    CREATE INDEX IX_ChatMessage_SenderId ON dbo.ChatMessage(SenderId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ChatMessage_ReceiverId' AND object_id = OBJECT_ID(N'dbo.ChatMessage', N'U'))
+    CREATE INDEX IX_ChatMessage_ReceiverId ON dbo.ChatMessage(ReceiverId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Prescription_UserId' AND object_id = OBJECT_ID(N'dbo.Prescription', N'U'))
+    CREATE INDEX IX_Prescription_UserId ON dbo.Prescription(UserId);
 GO
 
 -- ==================== FIX DATA NULL (nếu DB cũ) ====================
 IF OBJECT_ID(N'[dbo].[Product]', N'U') IS NOT NULL
 BEGIN
+    -- Older installations may already have had a nullable Code column.
+    UPDATE [Product] SET Code = N'' WHERE Code IS NULL;
     UPDATE [Product] SET ImageUrl = N'' WHERE ImageUrl IS NULL;
     UPDATE [Product] SET [Description] = N'' WHERE [Description] IS NULL;
     UPDATE [Product] SET Unit = N'Hộp' WHERE Unit IS NULL OR LTRIM(RTRIM(Unit)) = '';
     UPDATE [Product] SET Name = N'(Không tên)' WHERE Name IS NULL OR LTRIM(RTRIM(Name)) = '';
+
+    -- Match the non-nullable Product entity even when upgrading an older schema.
+    ALTER TABLE [dbo].[Product] ALTER COLUMN Code NVARCHAR(50) NOT NULL;
+    ALTER TABLE [dbo].[Product] ALTER COLUMN ImageUrl NVARCHAR(MAX) NOT NULL;
+    ALTER TABLE [dbo].[Product] ALTER COLUMN [Description] NVARCHAR(MAX) NOT NULL;
+    ALTER TABLE [dbo].[Product] ALTER COLUMN Unit NVARCHAR(50) NOT NULL;
+    ALTER TABLE [dbo].[Product] ALTER COLUMN Name NVARCHAR(200) NOT NULL;
+
+    IF NOT EXISTS (SELECT 1 FROM sys.default_constraints d JOIN sys.columns c ON c.object_id = d.parent_object_id AND c.column_id = d.parent_column_id WHERE d.parent_object_id = OBJECT_ID(N'[dbo].[Product]') AND c.name = N'Code')
+        ALTER TABLE [dbo].[Product] ADD CONSTRAINT DF_Product_Code DEFAULT (N'') FOR Code;
+    IF NOT EXISTS (SELECT 1 FROM sys.default_constraints d JOIN sys.columns c ON c.object_id = d.parent_object_id AND c.column_id = d.parent_column_id WHERE d.parent_object_id = OBJECT_ID(N'[dbo].[Product]') AND c.name = N'ImageUrl')
+        ALTER TABLE [dbo].[Product] ADD CONSTRAINT DF_Product_ImageUrl DEFAULT (N'') FOR ImageUrl;
+    IF NOT EXISTS (SELECT 1 FROM sys.default_constraints d JOIN sys.columns c ON c.object_id = d.parent_object_id AND c.column_id = d.parent_column_id WHERE d.parent_object_id = OBJECT_ID(N'[dbo].[Product]') AND c.name = N'Description')
+        ALTER TABLE [dbo].[Product] ADD CONSTRAINT DF_Product_Description DEFAULT (N'') FOR [Description];
+    IF NOT EXISTS (SELECT 1 FROM sys.default_constraints d JOIN sys.columns c ON c.object_id = d.parent_object_id AND c.column_id = d.parent_column_id WHERE d.parent_object_id = OBJECT_ID(N'[dbo].[Product]') AND c.name = N'Unit')
+        ALTER TABLE [dbo].[Product] ADD CONSTRAINT DF_Product_Unit DEFAULT (N'Hộp') FOR Unit;
 END
 GO
 
 -- ==================== SEED DATA ====================
 
-IF NOT EXISTS (SELECT 1 FROM [User])
-BEGIN
-    INSERT INTO [User] (FullName, Phone, Email, PasswordHash, Role, Status, AvatarUrl) VALUES
-    (N'Admin MedCare',          '0901000001', 'admin@medcare.vn',       '123456', 'admin',      'Active', NULL),
-    (N'Dược sĩ Nguyễn Văn A',   '0901000002', 'pharmacist@medcare.vn',  '123456', 'pharmacist', 'Active', NULL),
-    (N'Khách hàng Trần Thị B',  '0901000003', 'customer@medcare.vn',    '123456', 'customer',   'Active', NULL);
-END
-GO
+-- Không tạo sẵn user hoặc mật khẩu dùng chung. Tạo admin đầu tiên qua
+-- POST /api/auth/bootstrap-admin với mật khẩu mạnh.
 
 -- Đồng bộ Category: đảm bảo đúng 8 danh mục Id 1..8 (cập nhật nếu đã có, chèn nếu thiếu)
 -- Lưu ý: không xóa Category đang được Product tham chiếu; chỉ MERGE theo Id.
@@ -601,6 +630,17 @@ GROUP BY c.Id, c.Name
 ORDER BY c.Id;
 GO
 
+-- Domain constraints protect the database even when a request bypasses the UI.
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_Product_Stock_Price')
+    ALTER TABLE [dbo].[Product] WITH CHECK ADD CONSTRAINT CK_Product_Stock_Price CHECK (StockQuantity >= 0 AND Price >= 0);
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_InventoryBatch_Values')
+    ALTER TABLE [dbo].[InventoryBatch] WITH CHECK ADD CONSTRAINT CK_InventoryBatch_Values CHECK (Quantity > 0 AND ImportPrice >= 0 AND MfgDate < ExpDate);
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_OrderDetail_Values')
+    ALTER TABLE [dbo].[OrderDetail] WITH CHECK ADD CONSTRAINT CK_OrderDetail_Values CHECK (Quantity > 0 AND UnitPrice >= 0);
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_Order_Values')
+    ALTER TABLE [dbo].[Order] WITH CHECK ADD CONSTRAINT CK_Order_Values CHECK (TotalAmount >= 0 AND OrderType IN ('Online','POS') AND Status IN ('Pending','Checking','Approved','Shipping','Completed','Cancelled'));
+GO
+
 -- ==================== VERIFY ====================
 PRINT N'=== Users ===';
 SELECT Id, Email, Role, Status FROM [User];
@@ -617,6 +657,5 @@ SELECT TOP 10 Id, Name, Price, StockQuantity, Unit, CategoryId, SupplierId,
        CASE WHEN ImageUrl = N'' THEN 'NO IMAGE' ELSE 'OK' END AS ImageStatus
 FROM [Product] ORDER BY Id;
 
-PRINT N'Demo accounts (password = 123456):';
-PRINT N'  admin@medcare.vn / pharmacist@medcare.vn / customer@medcare.vn';
+PRINT N'Tạo tài khoản admin đầu tiên qua POST /api/auth/bootstrap-admin.';
 GO

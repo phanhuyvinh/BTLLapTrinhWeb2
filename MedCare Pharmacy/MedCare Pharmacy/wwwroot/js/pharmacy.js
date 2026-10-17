@@ -171,15 +171,13 @@ async function doPosCheckout() {
     const subtotal = posInvoice.reduce((s, i) => s + i.price * i.quantity, 0);
     const total = subtotal + Math.round(subtotal * 0.05);
 
-    // Body đúng CreatePosDto của OrdersController
+    // Server lấy giá sản phẩm và tính tổng; client chỉ gửi mã hàng/số lượng.
     const body = {
         customerName: "Khách vãng lai",
         phone: "",
-        totalAmount: total,
         items: posInvoice.map(i => ({
             productId: i.id,
-            quantity: i.quantity,
-            unitPrice: i.price
+            quantity: i.quantity
         }))
     };
 
@@ -310,11 +308,13 @@ window.viewRx = (orderId) => {
     if (!o) return;
 
     const rxContent = o.prescriptionUrl
-        ? (o.prescriptionUrl.startsWith("http") || o.prescriptionUrl.startsWith("/")
+        ? (o.prescriptionUrl.startsWith("/api/prescriptions/")
+            ? `<button class="btn" onclick="openProtectedFile('${escapeHtml(o.prescriptionUrl)}')">Mở tệp đơn thuốc</button>`
+            : (o.prescriptionUrl.startsWith("http") || o.prescriptionUrl.startsWith("/")
             ? `<img src="${escapeHtml(o.prescriptionUrl)}" alt="Đơn thuốc"
                    style="max-width:100%;border-radius:8px;border:1px solid #ddd">`
             : `<div style="text-align:center;padding:30px;background:#f5faf8;border-radius:10px;font-size:60px">🖼️</div>
-               <p class="text-muted mt-8" style="font-size:13px">${escapeHtml(o.prescriptionUrl)}</p>`)
+               <p class="text-muted mt-8" style="font-size:13px">${escapeHtml(o.prescriptionUrl)}</p>`))
         : `<div style="text-align:center;padding:30px;background:#f5faf8;border-radius:10px;font-size:60px">🖼️</div>
            <p class="text-muted mt-8" style="font-size:13px">Không có hình ảnh đơn thuốc.</p>`;
 

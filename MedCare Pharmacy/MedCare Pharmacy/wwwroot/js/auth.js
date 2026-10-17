@@ -65,6 +65,9 @@ function renderAuthArea() {
     const dashLink = isStaff
         ? `<a href="${dashboardHrefFor(role)}">Bảng điều khiển</a>`
         : "";
+    const ordersLink = role === "customer"
+        ? `<a href="/Customer/Orders">🛒 Đơn hàng của tôi</a>`
+        : "";
     const badgeClass =
         role === "admin" ? "danger" : role === "pharmacist" ? "warn" : "info";
 
@@ -88,7 +91,7 @@ function renderAuthArea() {
             </div>
             ${dashLink}
             <a href="/Customer/Profile">👤 Hồ sơ cá nhân</a>
-            <a href="/Customer/Orders">🛒 Đơn hàng của tôi</a>
+            ${ordersLink}
             <a href="#" onclick="handleLogout(event)" class="danger">Đăng xuất</a>
         </div>
     </div>

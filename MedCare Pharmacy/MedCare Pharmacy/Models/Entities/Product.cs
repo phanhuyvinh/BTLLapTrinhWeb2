@@ -7,6 +7,8 @@
         public string? ActiveIngredient { get; set; }
         public decimal Price { get; set; }
 
+        public string Code { get; set; } = string.Empty;
+
         // Thêm trường Số lượng tồn kho
         public int StockQuantity { get; set; }
 
