@@ -63,14 +63,7 @@
     </div>
 
     <div class="categories">
-        <a class="category" href="/Customer/Products?cat=1">🩹<span>Sơ cứu</span></a>
-        <a class="category" href="/Customer/Products?cat=2">🤧<span>Dị ứng</span></a>
-        <a class="category" href="/Customer/Products?cat=3">🧴<span>Chăm sóc da</span></a>
-        <a class="category" href="/Customer/Products?cat=4">💪<span>Chăm sóc sức khỏe</span></a>
-        <a class="category" href="/Customer/Products?cat=5">🍊<span>Vitamin & Khoáng chất</span></a>
-        <a class="category" href="/Customer/Products?cat=6">🫁<span>Tiêu hóa</span></a>
-        <a class="category" href="/Customer/Products?cat=7">💊<span>Thuốc giảm đau</span></a>
-        <a class="category" href="/Customer/Products?cat=8">👂<span>Tai mũi họng</span></a>
+        @await Component.InvokeAsync("FeaturedCategories")
     </div>
 </section>
 
