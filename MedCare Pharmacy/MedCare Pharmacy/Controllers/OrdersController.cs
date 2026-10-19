@@ -50,7 +50,13 @@ namespace MedCare_Pharmacy.Controllers
         [EnableRateLimiting("order-create")]
         public async Task<IActionResult> CreateOrder([FromBody] CreateOrderDto dto)
         {
-            if (User.Identity?.IsAuthenticated == true && !User.IsInRole("customer")) return Forbid();
+            if (User.Identity?.IsAuthenticated == true && !User.IsInRole("customer"))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    message = "Dược sĩ và admin không được đặt hàng qua form khách hàng. Vui lòng đăng xuất và dùng tài khoản khách hàng (customer), hoặc đặt hàng khi chưa đăng nhập."
+                });
+            }
             if (!ValidContact(dto.CustomerName, 150) || !ValidContact(dto.Phone, 20) ||
                 !ValidContact(dto.Address, 300) || dto.Items == null || dto.Items.Count == 0 || dto.Items.Count > 100)
                 return BadRequest(new { message = "Thông tin giao hàng hoặc danh sách sản phẩm không hợp lệ." });

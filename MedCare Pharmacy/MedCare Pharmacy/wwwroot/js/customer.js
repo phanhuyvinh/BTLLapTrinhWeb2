@@ -308,6 +308,15 @@ function initCheckoutPage() {
             quantity: i.quantity
         }));
 
+
+        // Dược sĩ / admin không được đặt hàng qua form khách
+        const currentUser = typeof getCurrentUser === "function" ? getCurrentUser() : null;
+        const role = (currentUser && currentUser.role ? String(currentUser.role) : "").toLowerCase();
+        if (role === "admin" || role === "pharmacist") {
+            showToast("Dược sĩ và admin không được đặt hàng qua form khách hàng. Vui lòng đăng xuất và dùng tài khoản khách hàng.", "error");
+            return;
+        }
+
         const body = {
             customerName: data.name.trim(),
             phone: data.phone.trim(),
@@ -323,7 +332,13 @@ function initCheckoutPage() {
             showToast(result.message || "Đặt hàng thành công!");
             setTimeout(() => location.href = "/Customer/Orders", 600);
         } catch (err) {
-            showToast(err.message || "Đặt hàng thất bại", "error");
+            let msg = err.message || "Đặt hàng thất bại";
+            if (err.status === 403) {
+                msg = "Dược sĩ và admin không được đặt hàng qua form khách hàng. Vui lòng đăng xuất và dùng tài khoản khách hàng.";
+            } else if (err.status === 429) {
+                msg = "Bạn thao tác quá nhanh. Vui lòng đợi khoảng 1 phút rồi thử lại.";
+            }
+            showToast(msg, "error");
         }
     });
 

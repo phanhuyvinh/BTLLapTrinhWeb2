@@ -42,7 +42,12 @@ async function apiRequest(method, endpoint, body = null, options = {}) {
         try {
             const data = await res.json();
             if (data && data.message) msg = data.message;
-        } catch (_) { /* ignore */ }
+            else if (res.status === 403) msg = "Dược sĩ và admin không được đặt hàng qua form khách hàng.";
+            else if (res.status === 429) msg = "Thao tác quá nhanh. Vui lòng đợi khoảng 1 phút rồi thử lại.";
+        } catch (_) {
+            if (res.status === 403) msg = "Dược sĩ và admin không được đặt hàng qua form khách hàng.";
+            else if (res.status === 429) msg = "Thao tác quá nhanh. Vui lòng đợi khoảng 1 phút rồi thử lại.";
+        }
         const error = new Error(msg);
         error.status = res.status;
         throw error;
@@ -77,10 +82,10 @@ async function openProtectedFile(endpoint) {
 }
 
 /* ---------------- CRUD wrapper ---------------- */
-const apiGet    = (endpoint, opts)        => apiRequest("GET",    endpoint, null, opts);
-const apiPost   = (endpoint, body, opts)  => apiRequest("POST",   endpoint, body, opts);
-const apiPut    = (endpoint, body, opts)  => apiRequest("PUT",    endpoint, body, opts);
-const apiDelete = (endpoint, opts)        => apiRequest("DELETE", endpoint, null, opts);
+const apiGet = (endpoint, opts) => apiRequest("GET", endpoint, null, opts);
+const apiPost = (endpoint, body, opts) => apiRequest("POST", endpoint, body, opts);
+const apiPut = (endpoint, body, opts) => apiRequest("PUT", endpoint, body, opts);
+const apiDelete = (endpoint, opts) => apiRequest("DELETE", endpoint, null, opts);
 
 /* ---------------- Endpoint groups (gợi ý sẵn) ----------------
    Dùng khi backend sẵn sàng:
@@ -90,21 +95,21 @@ const apiDelete = (endpoint, opts)        => apiRequest("DELETE", endpoint, null
 --------------------------------------------------------------- */
 const API = {
     // auth
-    AUTH_LOGIN:    "/auth/login",
+    AUTH_LOGIN: "/auth/login",
     AUTH_REGISTER: "/auth/register",
     AUTH_LOGOUT: "/auth/logout",
 
     // catalog
-    PRODUCTS:      "/products",
-    CATEGORIES:    "/categories",
-    SUPPLIERS:     "/suppliers",
+    PRODUCTS: "/products",
+    CATEGORIES: "/categories",
+    SUPPLIERS: "/suppliers",
 
     // cart
-    CART:          "/cart",
-    CART_ITEMS:    "/cart/items",
+    CART: "/cart",
+    CART_ITEMS: "/cart/items",
 
     // orders
-    ORDERS:        "/orders",
+    ORDERS: "/orders",
 
     // inventory
     INV_ALERTS: "/inventorybatches/alerts",
@@ -114,10 +119,10 @@ const API = {
     PURCHASE_RECEIPTS: "/inventorybatches/receipts",
 
     // pos
-    POS_INVOICES:  "/pos/invoices",
+    POS_INVOICES: "/pos/invoices",
 
     // users
-    USERS:         "/users",
+    USERS: "/users",
 
     // reports
     REPORT_REVENUE: "/reports/revenue",
