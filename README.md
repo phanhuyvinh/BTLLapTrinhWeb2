@@ -1,6 +1,6 @@
 # MedCare Pharmacy — Hệ thống quản lý nhà thuốc trực tuyến
 
-**Bài tập lớn môn Lập trình Web 2**  
+**Bài tập lớn môn Lập trình Web**  
 Repository: [phanhuyvinh/BTLLapTrinhWeb2](https://github.com/phanhuyvinh/BTLLapTrinhWeb2)
 
 ---
