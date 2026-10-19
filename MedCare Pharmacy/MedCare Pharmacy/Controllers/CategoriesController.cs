@@ -39,6 +39,10 @@ namespace MedCare_Pharmacy.Controllers
         [Authorize(Roles = "admin")]
         public async Task<IActionResult> Create([FromBody] Category category)
         {
+            if (!ValidCategory(category))
+                return BadRequest(new { message = "Tên danh mục là bắt buộc và tối đa 150 ký tự." });
+
+            category.Name = category.Name.Trim();
             _context.Categories.Add(category);
             await _context.SaveChangesAsync();
             return Ok(new { success = true, message = "Thêm danh mục thành công!", category });
@@ -50,8 +54,14 @@ namespace MedCare_Pharmacy.Controllers
         public async Task<IActionResult> Update(int id, [FromBody] Category category)
         {
             if (id != category.Id) return BadRequest(new { message = "ID không trùng khớp!" });
+            if (!ValidCategory(category))
+                return BadRequest(new { message = "Tên danh mục là bắt buộc và tối đa 150 ký tự." });
 
-            _context.Entry(category).State = EntityState.Modified;
+            var existing = await _context.Categories.FindAsync(id);
+            if (existing == null) return NotFound(new { message = "Không tìm thấy danh mục!" });
+
+            existing.Name = category.Name.Trim();
+            existing.Description = category.Description;
             await _context.SaveChangesAsync();
 
             return Ok(new { success = true, message = "Cập nhật danh mục thành công!" });
@@ -70,5 +80,8 @@ namespace MedCare_Pharmacy.Controllers
 
             return Ok(new { success = true, message = "Đã xóa danh mục!" });
         }
+
+        private static bool ValidCategory(Category? category) =>
+            category != null && !string.IsNullOrWhiteSpace(category.Name) && category.Name.Trim().Length <= 150;
     }
 }

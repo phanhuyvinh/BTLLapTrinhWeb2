@@ -71,6 +71,9 @@ namespace MedCare_Pharmacy.Controllers
         public async Task<IActionResult> Create([FromBody] Product product)
         {
             if (!ValidProduct(product)) return BadRequest(new { message = "Thông tin thuốc hoặc giá bán không hợp lệ." });
+            var referenceError = await ValidateReferencesAsync(product);
+            if (referenceError != null) return BadRequest(new { message = referenceError });
+
             product.StockQuantity = 0; // Stock can only change through receiving or sales workflows.
             _context.Products.Add(product);
             await _context.SaveChangesAsync();
@@ -84,6 +87,9 @@ namespace MedCare_Pharmacy.Controllers
         {
             if (id != product.Id) return BadRequest();
             if (!ValidProduct(product)) return BadRequest(new { message = "Thông tin thuốc hoặc giá bán không hợp lệ." });
+            var referenceError = await ValidateReferencesAsync(product);
+            if (referenceError != null) return BadRequest(new { message = referenceError });
+
             var current = await _context.Products.FindAsync(id);
             if (current == null) return NotFound(new { message = "Không tìm thấy thuốc." });
 
@@ -110,7 +116,9 @@ namespace MedCare_Pharmacy.Controllers
             if (product == null) return NotFound();
 
             var hasHistory = await _context.OrderDetails.AnyAsync(d => d.ProductId == id) ||
-                             await _context.InventoryBatches.AnyAsync(b => b.ProductId == id);
+                             await _context.InventoryBatches.AnyAsync(b => b.ProductId == id) ||
+                             await _context.PurchaseReceiptLines.AnyAsync(line => line.ProductId == id) ||
+                             await _context.InventoryMovements.AnyAsync(movement => movement.ProductId == id);
             if (hasHistory)
                 return Conflict(new { message = "Không thể xóa thuốc đã có giao dịch hoặc lô nhập để bảo toàn lịch sử." });
 
@@ -125,6 +133,19 @@ namespace MedCare_Pharmacy.Controllers
             !string.IsNullOrWhiteSpace(product.Unit) && product.Unit.Trim().Length <= 50 &&
             (product.Code?.Length ?? 0) <= 50 &&
             (product.ActiveIngredient?.Length ?? 0) <= 200;
+
+        private async Task<string?> ValidateReferencesAsync(Product product)
+        {
+            if (product.CategoryId is int categoryId &&
+                !await _context.Categories.AnyAsync(category => category.Id == categoryId))
+                return "Danh mục được chọn không tồn tại.";
+
+            if (product.SupplierId is int supplierId &&
+                !await _context.Suppliers.AnyAsync(supplier => supplier.Id == supplierId))
+                return "Nhà cung cấp được chọn không tồn tại.";
+
+            return null;
+        }
 
         private async Task ApplySellableStockAsync(List<Product> products)
         {

@@ -195,6 +195,9 @@ namespace MedCare_Pharmacy.Controllers
         private string GenerateJwtToken(User user)
         {
             var jwtKey = _config["Jwt:Key"]!;
+            if (string.IsNullOrWhiteSpace(jwtKey) || Encoding.UTF8.GetByteCount(jwtKey) < 32)
+                throw new InvalidOperationException(
+                    "Thiếu Jwt:Key trong appsettings.json (cần ≥ 32 byte).");
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 

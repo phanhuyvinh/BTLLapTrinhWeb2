@@ -1,33 +1,28 @@
-﻿-- =====================================================================
--- MEDCARE PHARMACY - CONSOLIDATED SQL
--- File duy nhat de gui doi tac: cai moi hoac nang cap database hien co.
---
--- CHON DUNG MOT CACH CHAY:
--- 1) Database moi/demo: mo file trong SSMS va Execute TOAN BO file.
---    Luu y: phan cai moi nap lai du lieu san pham mau; khong dung tren DB
---    dang co du lieu can giu.
--- 2) Database da co du lieu: KHONG Execute phan cai moi. Trong SSMS, chi
---    boi den va Execute tu dong "BEGIN EXISTING DATABASE UPGRADE SECTION"
---    den het file. Phan nay khong xoa/nap lai du lieu san pham.
---
--- SQL Server Management Studio (SSMS) can ket noi dung SQL Server instance.
 -- =====================================================================
--- ============================================================
--- MedCare Pharmacy - Single-file fresh database setup
+-- MEDCARE PHARMACY - FILE SQL HOÀN CHỈNH (1 FILE DUY NHẤT)
 -- Database: MedCarePharmacyDB
--- Includes schema, demo seed data, inventory receipt/history and payment fields.
--- IMPORTANT: Intended for a NEW database or disposable demo data.
--- The product seed section below deletes existing Product, InventoryBatch,
--- and related OrderDetail rows before reloading demo products.
--- For an existing database with data to preserve, use Upgrade_InventoryFeatures.sql.
--- Run this file in SQL Server Management Studio (SSMS) with permission to create DB.
--- ============================================================
--- ============================================================
--- MedCare Pharmacy - SQL Server Database Schema + Seed Data (Complete & Idempotent)
--- Bao gồm: schema, users, categories, suppliers, 299 products, inventory batches
--- Database : MedCarePharmacyDB
--- Fixed: không chèn NULL vào các cột string NON-nullable của Entity
--- ============================================================
+-- =====================================================================
+-- Nội dung:
+--   • Tạo DB + schema (User, Product, Order, Inventory, ...)
+--   • Seed Category, Supplier, 299 Product + InventoryBatch
+--   • Tài khoản admin mặc định (INSERT hoặc UPDATE)
+--
+-- Tài khoản admin:
+--   Email    : admin@medcare.vn
+--   Password : Admin12345678
+--   Role     : admin
+--   Hash     : BCrypt (tương thích AuthController / BCrypt.Net)
+--
+-- Cách chạy:
+--   1) Mở file trong SSMS, kết nối SQL Server
+--   2) Execute TOÀN BỘ file
+--   3) Đăng nhập app: admin@medcare.vn / Admin12345678
+--
+-- Ghi chú:
+--   - DB đã tồn tại: bỏ qua CREATE, vẫn seed/update an toàn
+--   - Reseed product: xóa đúng thứ tự FK (InventoryMovement → ... → Product)
+--   - Admin: luôn đảm bảo có admin@medcare.vn (Active)
+-- =====================================================================
 
 IF DB_ID(N'MedCarePharmacyDB') IS NULL
 BEGIN
@@ -362,8 +357,38 @@ GO
 
 -- ==================== SEED DATA ====================
 
--- Không tạo sẵn user hoặc mật khẩu dùng chung. Tạo admin đầu tiên qua
--- POST /api/auth/bootstrap-admin với mật khẩu mạnh.
+-- Tài khoản admin mặc định
+-- Email: admin@medcare.vn | Mật khẩu: Admin12345678 (BCrypt)
+-- - Nếu chưa có user admin@medcare.vn → INSERT
+-- - Nếu đã có email đó → cập nhật Role=admin, Status=Active, PasswordHash
+-- - Nếu chưa có role admin nào và chưa có email này → INSERT
+IF EXISTS (SELECT 1 FROM [dbo].[User] WHERE Email = 'admin@medcare.vn')
+BEGIN
+    UPDATE [dbo].[User]
+    SET FullName = N'Admin MedCare',
+        Phone = COALESCE(NULLIF(LTRIM(RTRIM(Phone)), ''), '0901000001'),
+        PasswordHash = N'$2b$12$BSqc5CdZAeQmZU5K6gedSeW2uYMA3TmXqvRJLcxLVbTWQWPbWyYny',
+        Role = 'admin',
+        Status = 'Active'
+    WHERE Email = 'admin@medcare.vn';
+    PRINT N'Đã cập nhật tài khoản admin: admin@medcare.vn / Admin12345678';
+END
+ELSE
+BEGIN
+    INSERT INTO [dbo].[User] (FullName, Phone, Email, PasswordHash, Role, Status, AvatarUrl, CreatedAt)
+    VALUES (
+        N'Admin MedCare',
+        '0901000001',
+        'admin@medcare.vn',
+        N'$2b$12$BSqc5CdZAeQmZU5K6gedSeW2uYMA3TmXqvRJLcxLVbTWQWPbWyYny',
+        'admin',
+        'Active',
+        NULL,
+        SYSUTCDATETIME()
+    );
+    PRINT N'Đã tạo tài khoản admin mặc định: admin@medcare.vn / Admin12345678';
+END
+GO
 
 -- Đồng bộ Category: đảm bảo đúng 8 danh mục Id 1..8 (cập nhật nếu đã có, chèn nếu thiếu)
 -- Lưu ý: không xóa Category đang được Product tham chiếu; chỉ MERGE theo Id.
@@ -416,12 +441,17 @@ GO
 BEGIN TRY
     BEGIN TRANSACTION;
 
-    -- Xóa dữ liệu seed cũ để import lại.
-    -- Xóa OrderDetail trỏ tới Product (đơn hàng demo) để tránh lỗi FK;
-    -- giữ nguyên bảng Order (chỉ mất chi tiết dòng hàng demo).
-    DELETE FROM [OrderDetail] WHERE ProductId IN (SELECT Id FROM [Product]);
-    DELETE FROM [InventoryBatch];
-    DELETE FROM [Product];
+    -- Xóa dữ liệu seed cũ để import lại (đúng thứ tự FK).
+    -- Xóa các bảng phụ thuộc Product trước, giữ nguyên Order (chỉ mất chi tiết demo).
+    IF OBJECT_ID(N'[dbo].[InventoryMovement]', N'U') IS NOT NULL
+        DELETE FROM [dbo].[InventoryMovement];
+    IF OBJECT_ID(N'[dbo].[PurchaseReceiptLine]', N'U') IS NOT NULL
+        DELETE FROM [dbo].[PurchaseReceiptLine];
+    IF OBJECT_ID(N'[dbo].[PurchaseReceipt]', N'U') IS NOT NULL
+        DELETE FROM [dbo].[PurchaseReceipt];
+    DELETE FROM [dbo].[OrderDetail] WHERE ProductId IN (SELECT Id FROM [dbo].[Product]);
+    DELETE FROM [dbo].[InventoryBatch];
+    DELETE FROM [dbo].[Product];
 
     -- Reset identity
     DBCC CHECKIDENT ('[Product]', RESEED, 0);
@@ -785,7 +815,7 @@ SELECT TOP 10 Id, Name, Price, StockQuantity, Unit, CategoryId, SupplierId,
        CASE WHEN ImageUrl = N'' THEN 'NO IMAGE' ELSE 'OK' END AS ImageStatus
 FROM [Product] ORDER BY Id;
 
-PRINT N'Tạo tài khoản admin đầu tiên qua POST /api/auth/bootstrap-admin.';
+PRINT N'Tài khoản admin mặc định: admin@medcare.vn / Admin12345678 (đã seed trong script).';
 GO
 
 

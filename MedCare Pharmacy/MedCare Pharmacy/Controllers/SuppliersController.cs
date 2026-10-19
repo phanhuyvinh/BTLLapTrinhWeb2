@@ -40,6 +40,14 @@ namespace MedCare_Pharmacy.Controllers
         [Authorize(Roles = "admin")]
         public async Task<IActionResult> Create([FromBody] Supplier supplier)
         {
+            if (!ValidSupplier(supplier))
+                return BadRequest(new { message = "Thông tin nhà cung cấp không hợp lệ hoặc vượt giới hạn độ dài." });
+
+            supplier.Name = supplier.Name.Trim();
+            supplier.Phone = TrimOrNull(supplier.Phone);
+            supplier.Email = TrimOrNull(supplier.Email);
+            supplier.Address = TrimOrNull(supplier.Address);
+            supplier.Status = NormalizeStatus(supplier.Status);
             _context.Suppliers.Add(supplier);
             await _context.SaveChangesAsync();
             return Ok(new { success = true, message = "Thêm nhà cung cấp thành công!", supplier });
@@ -51,8 +59,17 @@ namespace MedCare_Pharmacy.Controllers
         public async Task<IActionResult> Update(int id, [FromBody] Supplier supplier)
         {
             if (id != supplier.Id) return BadRequest(new { message = "ID không trùng khớp!" });
+            if (!ValidSupplier(supplier))
+                return BadRequest(new { message = "Thông tin nhà cung cấp không hợp lệ hoặc vượt giới hạn độ dài." });
 
-            _context.Entry(supplier).State = EntityState.Modified;
+            var existing = await _context.Suppliers.FindAsync(id);
+            if (existing == null) return NotFound(new { message = "Không tìm thấy nhà cung cấp!" });
+
+            existing.Name = supplier.Name.Trim();
+            existing.Phone = TrimOrNull(supplier.Phone);
+            existing.Email = TrimOrNull(supplier.Email);
+            existing.Address = TrimOrNull(supplier.Address);
+            existing.Status = NormalizeStatus(supplier.Status);
             await _context.SaveChangesAsync();
 
             return Ok(new { success = true, message = "Cập nhật nhà cung cấp thành công!" });
@@ -66,10 +83,27 @@ namespace MedCare_Pharmacy.Controllers
             var supplier = await _context.Suppliers.FindAsync(id);
             if (supplier == null) return NotFound(new { message = "Không tìm thấy nhà cung cấp!" });
 
+            if (await _context.PurchaseReceipts.AnyAsync(r => r.SupplierId == id))
+                return Conflict(new { message = "Không thể xóa nhà cung cấp đã có phiếu nhập để bảo toàn lịch sử." });
+
             _context.Suppliers.Remove(supplier);
             await _context.SaveChangesAsync();
 
             return Ok(new { success = true, message = "Đã xóa nhà cung cấp!" });
         }
+
+        private static bool ValidSupplier(Supplier? supplier) =>
+            supplier != null && !string.IsNullOrWhiteSpace(supplier.Name) && supplier.Name.Trim().Length <= 200 &&
+            (supplier.Phone?.Length ?? 0) <= 20 && (supplier.Email?.Length ?? 0) <= 150 &&
+            (supplier.Address?.Length ?? 0) <= 300 &&
+            (string.IsNullOrWhiteSpace(supplier.Status) ||
+             supplier.Status.Equals("Active", StringComparison.OrdinalIgnoreCase) ||
+             supplier.Status.Equals("Inactive", StringComparison.OrdinalIgnoreCase));
+
+        private static string? TrimOrNull(string? value) =>
+            string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+        private static string NormalizeStatus(string? value) =>
+            string.Equals(value?.Trim(), "Inactive", StringComparison.OrdinalIgnoreCase) ? "Inactive" : "Active";
     }
 }
