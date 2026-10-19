@@ -104,7 +104,7 @@ BTLLapTrinhWeb2/
 
 - [.NET SDK 10](https://dotnet.microsoft.com/download) (hoặc phiên bản tương thích với `net10.0`)
 - SQL Server / SQL Server LocalDB
-- (Khuyến nghị) Visual Studio 2022 hoặc VS Code + C# extension
+- Visual Studio 2022 hoặc VS Code + C# extension
 
 ---
 
@@ -205,5 +205,5 @@ Mọi đóng góp / báo lỗi vui lòng mở Issue hoặc Pull Request trên re
 
 ---
 
-**Tác giả:** phanhuyvinh  
+**Tác giả:** Nhóm BTL lập trình Web gồm 4 thành viên Nguyễn Tiến Đạt, Lê Đình Long, Hoàng Thị Hải Vân, Phan Huy Vĩnh
 **Repo:** https://github.com/phanhuyvinh/BTLLapTrinhWeb2
