@@ -27,7 +27,7 @@ namespace MedCare_Pharmacy.Controllers
 
         private string? CurrentUserRole()
         {
-            return User.FindFirst(ClaimTypes.Role)?.Value?.ToLower();
+            return User.FindFirst(ClaimTypes.Role)?.Value?.ToLowerInvariant();
         }
 
         // GET: api/chat/conversations
@@ -39,6 +39,10 @@ namespace MedCare_Pharmacy.Controllers
 
             var role = CurrentUserRole() ?? "";
             bool isStaff = role == "admin" || role == "pharmacist";
+            var staffIds = await _context.Users
+                .Where(u => u.Role.ToLower() == "admin" || u.Role.ToLower() == "pharmacist")
+                .Select(u => u.Id)
+                .ToListAsync();
 
             List<ChatMessage> messages;
             List<int> peerIds;
@@ -48,14 +52,10 @@ namespace MedCare_Pharmacy.Controllers
                 // Nếu là Admin hoặc Dược sĩ: Lấy toàn bộ tin nhắn trong hệ thống
                 messages = await _context.ChatMessages
                     .OrderByDescending(m => m.Timestamp)
+                    .ThenByDescending(m => m.Id)
                     .ToListAsync();
 
-                var staffIds = await _context.Users
-                    .Where(u => u.Role.ToLower() == "admin" || u.Role.ToLower() == "pharmacist")
-                    .Select(u => u.Id)
-                    .ToListAsync();
-
-                // Lọc ra danh sách ID khách hàng đã tham gia nhắn tin
+                // Mỗi khách hàng chỉ xuất hiện một lần trong hộp thư chung của nhân viên.
                 peerIds = messages
                     .SelectMany(m => new[] { m.SenderId, m.ReceiverId })
                     .Where(id => !staffIds.Contains(id))
@@ -68,20 +68,20 @@ namespace MedCare_Pharmacy.Controllers
                 messages = await _context.ChatMessages
                     .Where(m => m.SenderId == me || m.ReceiverId == me)
                     .OrderByDescending(m => m.Timestamp)
+                    .ThenByDescending(m => m.Id)
                     .ToListAsync();
 
-                peerIds = messages
-                    .Select(m => m.SenderId == me ? m.ReceiverId : m.SenderId)
-                    .Distinct()
-                    .ToList();
-
-                // Chỉ giữ peer là dược sĩ/admin (tránh dính hội thoại không hợp lệ)
-                var staffIdSet = await _context.Users
-                    .Where(u => u.Role.ToLower() == "admin" || u.Role.ToLower() == "pharmacist")
-                    .Select(u => u.Id)
-                    .ToListAsync();
-
-                peerIds = peerIds.Where(id => staffIdSet.Contains(id)).ToList();
+                // Toàn bộ nhân viên dùng chung một hội thoại hỗ trợ của khách.
+                // Chọn nhân viên tham gia tin nhắn mới nhất làm người nhận mặc định.
+                var latestStaffMessage = messages.FirstOrDefault(m =>
+                    (m.SenderId == me && staffIds.Contains(m.ReceiverId)) ||
+                    (m.ReceiverId == me && staffIds.Contains(m.SenderId)));
+                var staffPeerId = latestStaffMessage == null
+                    ? (int?)null
+                    : latestStaffMessage.SenderId == me
+                        ? latestStaffMessage.ReceiverId
+                        : latestStaffMessage.SenderId;
+                peerIds = staffPeerId.HasValue ? new List<int> { staffPeerId.Value } : new List<int>();
             }
 
             var peers = await _context.Users
@@ -93,8 +93,9 @@ namespace MedCare_Pharmacy.Controllers
                 var last = messages.First(m =>
                     m.SenderId == pid || m.ReceiverId == pid);
 
-                var unread = messages.Count(m =>
-                    m.SenderId == pid && !m.IsRead);
+                var unread = isStaff
+                    ? messages.Count(m => m.SenderId == pid && staffIds.Contains(m.ReceiverId) && !m.IsRead)
+                    : 0;
 
                 peers.TryGetValue(pid, out var peer);
 
@@ -126,22 +127,35 @@ namespace MedCare_Pharmacy.Controllers
 
             var role = CurrentUserRole() ?? "";
             bool isStaff = role == "admin" || role == "pharmacist";
+            var staffIds = await _context.Users
+                .Where(u => u.Role.ToLower() == "admin" || u.Role.ToLower() == "pharmacist")
+                .Select(u => u.Id)
+                .ToListAsync();
 
             List<ChatMessage> msgs;
             if (isStaff)
             {
+                var peer = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == peerId);
+                if (peer == null || peer.Role.ToLower() == "admin" || peer.Role.ToLower() == "pharmacist")
+                    return BadRequest(new { message = "Cuộc trò chuyện không hợp lệ." });
+
                 msgs = await _context.ChatMessages
                     .Where(m => m.SenderId == peerId || m.ReceiverId == peerId)
                     .OrderBy(m => m.Timestamp)
+                    .ThenBy(m => m.Id)
                     .ToListAsync();
             }
             else
             {
+                if (!staffIds.Contains(peerId))
+                    return BadRequest(new { message = "Chỉ có thể trò chuyện với nhân viên nhà thuốc." });
+
+                // Khách xem một lịch sử chung, kể cả khi nhiều dược sĩ đã trả lời.
                 msgs = await _context.ChatMessages
-                    .Where(m =>
-                        (m.SenderId == me && m.ReceiverId == peerId) ||
-                        (m.SenderId == peerId && m.ReceiverId == me))
+                    .Where(m => (m.SenderId == me && staffIds.Contains(m.ReceiverId)) ||
+                                (staffIds.Contains(m.SenderId) && m.ReceiverId == me))
                     .OrderBy(m => m.Timestamp)
+                    .ThenBy(m => m.Id)
                     .ToListAsync();
             }
 
@@ -182,6 +196,19 @@ namespace MedCare_Pharmacy.Controllers
             var receiver = await _context.Users.FindAsync(receiverId);
             if (receiver == null)
                 return BadRequest(new { message = "Không tìm thấy người nhận." });
+
+            var role = CurrentUserRole() ?? "";
+            var senderIsStaff = role is "admin" or "pharmacist";
+            var receiverIsStaff = receiver.Role.Equals("admin", StringComparison.OrdinalIgnoreCase) ||
+                                  receiver.Role.Equals("pharmacist", StringComparison.OrdinalIgnoreCase);
+            if (senderIsStaff && receiverIsStaff)
+                return BadRequest(new { message = "Nhân viên chỉ có thể phản hồi hội thoại của khách hàng." });
+            if (senderIsStaff && !receiver.Role.Equals("customer", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { message = "Chỉ có thể phản hồi tài khoản khách hàng." });
+            if (!senderIsStaff && role != "customer")
+                return Forbid();
+            if (!senderIsStaff && !receiverIsStaff)
+                return BadRequest(new { message = "Người nhận phải thuộc đội ngũ nhà thuốc." });
 
             var text = (content ?? "").Trim();
             string? imageUrl = null;
@@ -253,15 +280,26 @@ namespace MedCare_Pharmacy.Controllers
             List<ChatMessage> unread;
             if (isStaff)
             {
-                // Nhân viên đánh dấu tất cả tin nhắn gửi đến từ khách hàng peerId là đã đọc
+                var peer = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == peerId);
+                if (peer == null || peer.Role.ToLower() == "admin" || peer.Role.ToLower() == "pharmacist")
+                    return BadRequest(new { message = "Cuộc trò chuyện không hợp lệ." });
+
+                var staffIds = await _context.Users
+                    .Where(u => u.Role.ToLower() == "admin" || u.Role.ToLower() == "pharmacist")
+                    .Select(u => u.Id)
+                    .ToListAsync();
                 unread = await _context.ChatMessages
-                    .Where(m => m.SenderId == peerId && !m.IsRead)
+                    .Where(m => m.SenderId == peerId && staffIds.Contains(m.ReceiverId) && !m.IsRead)
                     .ToListAsync();
             }
             else
             {
+                var staffIds = await _context.Users
+                    .Where(u => u.Role.ToLower() == "admin" || u.Role.ToLower() == "pharmacist")
+                    .Select(u => u.Id)
+                    .ToListAsync();
                 unread = await _context.ChatMessages
-                    .Where(m => m.SenderId == peerId && m.ReceiverId == me && !m.IsRead)
+                    .Where(m => staffIds.Contains(m.SenderId) && m.ReceiverId == me && !m.IsRead)
                     .ToListAsync();
             }
 
